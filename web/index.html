@@ -1,0 +1,1460 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CoachLink Platform</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #fafafa; color: #333; }
+
+/* Top bar */
+#topbar {
+  position: fixed; top: 0; left: 0; right: 0; height: 50px; z-index: 100;
+  background: #333; color: #fff; display: flex; align-items: center;
+  justify-content: space-between; padding: 0 20px; font-size: 14px;
+}
+#topbar .user-info span { margin-right: 12px; }
+#topbar .user-info .role-badge {
+  background: #2196F3; padding: 2px 8px; border-radius: 10px; font-size: 12px;
+}
+#topbar button {
+  background: transparent; border: 1px solid #fff; color: #fff;
+  padding: 4px 14px; border-radius: 4px; cursor: pointer; font-size: 13px;
+}
+#topbar button:hover { background: rgba(255,255,255,0.15); }
+
+/* Sidebar */
+#sidebar {
+  position: fixed; top: 50px; left: 0; bottom: 0; width: 240px;
+  background: #f5f5f5; border-right: 1px solid #ddd; overflow-y: auto;
+  padding: 10px 0; display: none;
+}
+#sidebar a {
+  display: block; padding: 10px 20px; color: #333; text-decoration: none;
+  font-size: 14px; border-left: 3px solid transparent; position: relative;
+}
+#sidebar a:hover { background: #e8e8e8; }
+#sidebar a.active { background: #e0e0e0; border-left-color: #2196F3; font-weight: 600; }
+#sidebar .badge {
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  background: #f44336; color: #fff; font-size: 11px; min-width: 18px;
+  height: 18px; line-height: 18px; text-align: center; border-radius: 9px;
+  padding: 0 5px;
+}
+
+/* Main content */
+#main {
+  margin-top: 50px; margin-left: 0; padding: 24px; min-height: calc(100vh - 50px);
+}
+#main.with-sidebar { margin-left: 240px; }
+
+/* Auth forms */
+.auth-container {
+  max-width: 400px; margin: 60px auto; background: #fff;
+  border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); padding: 32px;
+}
+.auth-container h2 { margin-bottom: 20px; text-align: center; }
+.auth-toggle { text-align: center; margin-top: 16px; font-size: 14px; }
+.auth-toggle a { color: #2196F3; cursor: pointer; text-decoration: underline; }
+
+/* Forms */
+label { display: block; margin-bottom: 4px; font-weight: 500; font-size: 14px; }
+input[type="text"], input[type="password"], input[type="email"], input[type="number"],
+input[type="date"], textarea, select {
+  width: 100%; padding: 8px 10px; border: 1px solid #ccc; border-radius: 4px;
+  font-size: 14px; font-family: inherit; margin-bottom: 12px;
+}
+textarea { resize: vertical; min-height: 80px; }
+input[type="range"] { width: 100%; margin-bottom: 12px; }
+
+.radio-group { margin-bottom: 12px; }
+.radio-group label { display: inline; font-weight: normal; margin-right: 16px; }
+.radio-group input { margin-right: 4px; }
+
+/* Buttons */
+.btn {
+  display: inline-block; padding: 8px 18px; border: none; border-radius: 4px;
+  cursor: pointer; font-size: 14px; font-family: inherit; color: #fff;
+  text-decoration: none; line-height: 1.4;
+}
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primary { background: #2196F3; }
+.btn-primary:hover:not(:disabled) { background: #1976D2; }
+.btn-danger { background: #f44336; }
+.btn-danger:hover:not(:disabled) { background: #d32f2f; }
+.btn-success { background: #4CAF50; }
+.btn-success:hover:not(:disabled) { background: #388E3C; }
+.btn-secondary { background: #757575; }
+.btn-secondary:hover:not(:disabled) { background: #616161; }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-block { display: block; width: 100%; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #e0e0e0; }
+th { background: #f5f5f5; font-weight: 600; }
+tr:hover { background: #fafafa; }
+tr:nth-child(even) { background: #fafafa; }
+tr:nth-child(even):hover { background: #f0f0f0; }
+tr.overdue { background: #ffebee !important; }
+tr.overdue:hover { background: #ffcdd2 !important; }
+
+/* Cards */
+.card {
+  background: #fff; border: 1px solid #e0e0e0; border-radius: 6px;
+  padding: 16px; margin-bottom: 12px;
+}
+.card h3 { margin-bottom: 8px; }
+
+/* List items */
+.list-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; background: #fff; border: 1px solid #e0e0e0;
+  border-radius: 4px; margin-bottom: 8px;
+}
+.list-item .actions { display: flex; gap: 8px; }
+
+/* Modal */
+.modal-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.5); display: flex; align-items: center;
+  justify-content: center; z-index: 200;
+}
+.modal {
+  background: #fff; border-radius: 8px; padding: 24px; max-width: 600px;
+  width: 90%; max-height: 80vh; overflow-y: auto; position: relative;
+}
+.modal h3 { margin-bottom: 16px; }
+.modal-close {
+  position: absolute; top: 12px; right: 16px; background: none; border: none;
+  font-size: 20px; cursor: pointer; color: #666;
+}
+
+/* Toast */
+#toast-container {
+  position: fixed; top: 60px; right: 20px; z-index: 300; display: flex;
+  flex-direction: column; gap: 8px;
+}
+.toast {
+  padding: 12px 20px; border-radius: 4px; color: #fff; font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2); animation: slideIn 0.3s ease;
+  max-width: 400px;
+}
+.toast-error { background: #f44336; }
+.toast-success { background: #4CAF50; }
+.toast-info { background: #2196F3; }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* Filter bar */
+.filter-bar {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap;
+  margin-bottom: 16px; padding: 12px; background: #f9f9f9; border-radius: 6px;
+}
+.filter-bar .filter-group { display: flex; flex-direction: column; }
+.filter-bar label { margin-bottom: 2px; font-size: 12px; }
+.filter-bar input, .filter-bar select { margin-bottom: 0; width: auto; min-width: 160px; }
+
+/* Section header */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+}
+.section-header h2 { margin: 0; }
+
+/* Checkbox label */
+.checkbox-label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.checkbox-label input[type="checkbox"] { width: auto; margin: 0; }
+
+/* Misc */
+.empty-state { text-align: center; padding: 40px; color: #999; font-size: 15px; }
+.mb-12 { margin-bottom: 12px; }
+.mb-8 { margin-bottom: 8px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.text-muted { color: #999; font-size: 13px; }
+.inline-flex { display: inline-flex; align-items: center; gap: 8px; }
+
+/* Notification type badges */
+.notif-badge {
+  display: inline-block; padding: 2px 8px; border-radius: 10px;
+  font-size: 11px; color: #fff; margin-right: 8px;
+}
+.notif-badge.connection_request { background: #FF9800; }
+.notif-badge.connection_accepted { background: #4CAF50; }
+.notif-badge.connection_rejected { background: #f44336; }
+.notif-badge.new_assignment { background: #2196F3; }
+.notif-badge.report_submitted { background: #9C27B0; }
+.notif-badge.assignment_archived { background: #607D8B; }
+.notif-badge.default { background: #757575; }
+
+.unread { font-weight: 600; }
+
+/* Group detail */
+.group-detail-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.group-detail-header .btn { margin: 0; }
+
+.search-box { position: relative; }
+.search-results {
+  position: absolute; top: 100%; left: 0; right: 0; background: #fff;
+  border: 1px solid #ddd; border-top: none; border-radius: 0 0 4px 4px;
+  max-height: 200px; overflow-y: auto; z-index: 10;
+}
+.search-results .search-item {
+  padding: 8px 12px; cursor: pointer; display: flex; justify-content: space-between;
+  align-items: center; font-size: 14px;
+}
+.search-results .search-item:hover { background: #f0f0f0; }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div style="font-weight:600;">CoachLink</div>
+  <div class="user-info" id="user-info">
+    <span>Не авторизован</span>
+  </div>
+</div>
+
+<div id="sidebar"></div>
+<div id="main"><div id="content"></div></div>
+<div id="toast-container"></div>
+
+<script>
+// ==================== API ====================
+const API = {
+  baseUrl: '/api/v1',
+
+  _headers() {
+    const h = { 'Content-Type': 'application/json' };
+    const token = localStorage.getItem('access_token');
+    if (token) h['Authorization'] = 'Bearer ' + token;
+    return h;
+  },
+
+  async _request(method, url, data) {
+    const opts = { method, headers: this._headers() };
+    if (data !== undefined) opts.body = JSON.stringify(data);
+    try {
+      const resp = await fetch(this.baseUrl + url, opts);
+      let body = null;
+      const ct = resp.headers.get('content-type');
+      if (ct && ct.includes('application/json')) {
+        body = await resp.json();
+      } else {
+        body = await resp.text();
+      }
+      if (!resp.ok) {
+        const msg = (body && typeof body === 'object' && (body.error || body.message || body.detail))
+          ? (body.error || body.message || body.detail)
+          : ('Ошибка ' + resp.status);
+        throw new Error(msg);
+      }
+      return body;
+    } catch (e) {
+      if (e.message === 'Failed to fetch') throw new Error('Нет связи с сервером');
+      throw e;
+    }
+  },
+
+  get(url) { return this._request('GET', url); },
+  post(url, data) { return this._request('POST', url, data); },
+  put(url, data) { return this._request('PUT', url, data); },
+  del(url) { return this._request('DELETE', url); }
+};
+
+// ==================== Toast ====================
+function showToast(message, type) {
+  type = type || 'info';
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = message;
+  container.appendChild(el);
+  setTimeout(function() { el.remove(); }, 4000);
+}
+
+// ==================== Modal ====================
+function showModal(title, contentHtml) {
+  closeModal();
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.id = 'modal-overlay';
+  overlay.onclick = function(e) { if (e.target === overlay) closeModal(); };
+  overlay.innerHTML =
+    '<div class="modal">' +
+      '<button class="modal-close" onclick="closeModal()">&times;</button>' +
+      '<h3>' + escHtml(title) + '</h3>' +
+      '<div id="modal-body">' + contentHtml + '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+}
+
+function closeModal() {
+  const el = document.getElementById('modal-overlay');
+  if (el) el.remove();
+}
+
+// ==================== Utility ====================
+function escHtml(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  return d.substring(0, 10);
+}
+
+function formatDateTime(d) {
+  if (!d) return '';
+  try {
+    const dt = new Date(d);
+    return dt.toLocaleString('ru-RU');
+  } catch(e) { return d; }
+}
+
+function qs(sel, ctx) { return (ctx || document).querySelector(sel); }
+function qsa(sel, ctx) { return (ctx || document).querySelectorAll(sel); }
+
+// ==================== App State ====================
+const App = {
+  currentUser: null,
+  currentSection: null,
+  unreadCount: 0,
+  selectedAthleteIds: [],
+
+  init() {
+    const token = localStorage.getItem('access_token');
+    const userData = localStorage.getItem('user_data');
+    if (token && userData) {
+      try {
+        this.currentUser = JSON.parse(userData);
+      } catch(e) {
+        this.logout();
+        return;
+      }
+    }
+    this.render();
+    window.addEventListener('hashchange', function() { App.route(); });
+    this.route();
+  },
+
+  logout() {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    localStorage.removeItem('user_data');
+    this.currentUser = null;
+    this.unreadCount = 0;
+    window.location.hash = '#login';
+    this.render();
+  },
+
+  render() {
+    this.renderTopbar();
+    this.renderSidebar();
+    const main = document.getElementById('main');
+    if (this.currentUser) {
+      main.className = 'with-sidebar';
+      document.getElementById('sidebar').style.display = 'block';
+      this.fetchUnreadCount();
+    } else {
+      main.className = '';
+      document.getElementById('sidebar').style.display = 'none';
+    }
+  },
+
+  renderTopbar() {
+    const el = document.getElementById('user-info');
+    if (!this.currentUser) {
+      el.innerHTML = '<span>Не авторизован</span>';
+    } else {
+      const u = this.currentUser;
+      const roleLabel = u.role === 'coach' ? 'Тренер' : 'Спортсмен';
+      el.innerHTML =
+        '<span>' + escHtml(u.full_name) + '</span>' +
+        '<span class="text-muted">(' + escHtml(u.login) + ')</span>' +
+        '<span class="role-badge">' + roleLabel + '</span>' +
+        '<button onclick="App.logout()">Выйти</button>';
+    }
+  },
+
+  renderSidebar() {
+    const el = document.getElementById('sidebar');
+    if (!this.currentUser) { el.innerHTML = ''; return; }
+
+    let links = [];
+    if (this.currentUser.role === 'coach') {
+      links = [
+        { hash: '#coach-requests', label: 'Входящие заявки' },
+        { hash: '#coach-athletes', label: 'Мои спортсмены' },
+        { hash: '#coach-groups', label: 'Группы' },
+        { hash: '#coach-create-plan', label: 'Создать план' },
+        { hash: '#coach-assignments', label: 'Выданные задания' },
+        { hash: '#coach-archive', label: 'Архив' },
+        { hash: '#coach-templates', label: 'Шаблоны' },
+        { hash: '#notifications', label: 'Уведомления' }
+      ];
+    } else {
+      links = [
+        { hash: '#athlete-find-coach', label: 'Найти тренера' },
+        { hash: '#athlete-my-coach', label: 'Мой тренер' },
+        { hash: '#athlete-groups', label: 'Мои группы' },
+        { hash: '#athlete-assignments', label: 'Мои задания' },
+        { hash: '#notifications', label: 'Уведомления' }
+      ];
+    }
+
+    let html = '';
+    for (var i = 0; i < links.length; i++) {
+      var l = links[i];
+      var active = (window.location.hash === l.hash) ? ' active' : '';
+      var badge = '';
+      if (l.hash === '#notifications' && this.unreadCount > 0) {
+        badge = '<span class="badge">' + this.unreadCount + '</span>';
+      }
+      html += '<a href="' + l.hash + '" class="' + active + '">' + escHtml(l.label) + badge + '</a>';
+    }
+    el.innerHTML = html;
+  },
+
+  async fetchUnreadCount() {
+    try {
+      const data = await API.get('/notifications?is_read=false&limit=100');
+      var items = Array.isArray(data) ? data : (data.items || data.notifications || []);
+      this.unreadCount = items.length;
+      this.renderSidebar();
+    } catch(e) { /* ignore */ }
+  },
+
+  route() {
+    var hash = window.location.hash || '';
+    if (!this.currentUser && hash !== '#register') {
+      hash = '#login';
+    }
+    if (this.currentUser && (hash === '#login' || hash === '#register' || hash === '')) {
+      hash = this.currentUser.role === 'coach' ? '#coach-requests' : '#athlete-assignments';
+      window.location.hash = hash;
+      return;
+    }
+
+    this.currentSection = hash;
+    this.renderSidebar();
+
+    var routes = {
+      '#login': renderLogin,
+      '#register': renderRegister,
+      '#coach-requests': renderCoachRequests,
+      '#coach-athletes': renderCoachAthletes,
+      '#coach-groups': renderCoachGroups,
+      '#coach-create-plan': renderCoachCreatePlan,
+      '#coach-assignments': renderCoachAssignments,
+      '#coach-archive': renderCoachArchive,
+      '#coach-templates': renderCoachTemplates,
+      '#athlete-find-coach': renderAthleteFindCoach,
+      '#athlete-my-coach': renderAthleteMyCoach,
+      '#athlete-groups': renderAthleteGroups,
+      '#athlete-assignments': renderAthleteAssignments,
+      '#notifications': renderNotifications
+    };
+
+    // Handle dynamic routes
+    if (hash.startsWith('#coach-group-detail/')) {
+      var gid = hash.split('/')[1];
+      renderCoachGroupDetail(gid);
+    } else if (routes[hash]) {
+      routes[hash]();
+    } else {
+      document.getElementById('content').innerHTML = '<div class="empty-state">Страница не найдена</div>';
+    }
+  }
+};
+
+// ==================== AUTH ====================
+function renderLogin() {
+  var html =
+    '<div class="auth-container">' +
+      '<h2>Вход</h2>' +
+      '<form id="login-form">' +
+        '<label>Логин</label>' +
+        '<input type="text" id="login-input" required autocomplete="username">' +
+        '<label>Пароль</label>' +
+        '<input type="password" id="password-input" required autocomplete="current-password">' +
+        '<button type="submit" class="btn btn-primary btn-block">Войти</button>' +
+      '</form>' +
+      '<div class="auth-toggle">Нет аккаунта? <a onclick="window.location.hash=\'#register\'">Зарегистрироваться</a></div>' +
+    '</div>';
+  document.getElementById('content').innerHTML = html;
+
+  qs('#login-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var login = qs('#login-input').value.trim();
+    var password = qs('#password-input').value;
+    if (!login || !password) return;
+    try {
+      var data = await API.post('/auth/login', { login: login, password: password });
+      localStorage.setItem('access_token', data.access_token);
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+      localStorage.setItem('user_data', JSON.stringify(data.user));
+      App.currentUser = data.user;
+      App.render();
+      var defaultHash = data.user.role === 'coach' ? '#coach-requests' : '#athlete-assignments';
+      window.location.hash = defaultHash;
+    } catch(err) {
+      showToast(err.message, 'error');
+    }
+  };
+}
+
+function renderRegister() {
+  var html =
+    '<div class="auth-container">' +
+      '<h2>Регистрация</h2>' +
+      '<form id="register-form">' +
+        '<label>Логин</label>' +
+        '<input type="text" id="reg-login" required autocomplete="username">' +
+        '<label>Email</label>' +
+        '<input type="email" id="reg-email" required autocomplete="email">' +
+        '<label>Полное имя</label>' +
+        '<input type="text" id="reg-fullname" required autocomplete="name">' +
+        '<label>Пароль</label>' +
+        '<input type="password" id="reg-password" required autocomplete="new-password">' +
+        '<label>Роль</label>' +
+        '<div class="radio-group">' +
+          '<label><input type="radio" name="role" value="coach"> Тренер</label>' +
+          '<label><input type="radio" name="role" value="athlete" checked> Спортсмен</label>' +
+        '</div>' +
+        '<button type="submit" class="btn btn-primary btn-block">Зарегистрироваться</button>' +
+      '</form>' +
+      '<div class="auth-toggle">Уже есть аккаунт? <a onclick="window.location.hash=\'#login\'">Войти</a></div>' +
+    '</div>';
+  document.getElementById('content').innerHTML = html;
+
+  qs('#register-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var login = qs('#reg-login').value.trim();
+    var email = qs('#reg-email').value.trim();
+    var full_name = qs('#reg-fullname').value.trim();
+    var password = qs('#reg-password').value;
+    var role = qs('input[name="role"]:checked').value;
+    if (!login || !email || !full_name || !password) return;
+    try {
+      await API.post('/auth/register', {
+        login: login, email: email, password: password,
+        full_name: full_name, role: role
+      });
+      showToast('Регистрация успешна! Теперь войдите.', 'success');
+      window.location.hash = '#login';
+    } catch(err) {
+      showToast(err.message, 'error');
+    }
+  };
+}
+
+// ==================== COACH: Incoming requests ====================
+async function renderCoachRequests() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Входящие заявки</h2><div id="requests-list"><div class="empty-state">Загрузка...</div></div>';
+  try {
+    var data = await API.get('/connections/requests/incoming?status=pending');
+    var items = Array.isArray(data) ? data : (data.items || data.requests || []);
+    var el = document.getElementById('requests-list');
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет входящих заявок</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var r = items[i];
+      // API returns nested: r.athlete.full_name / r.athlete.login
+      var name = (r.athlete && r.athlete.full_name) || r.athlete_full_name || '';
+      var login = (r.athlete && r.athlete.login) || r.athlete_login || '';
+      html +=
+        '<div class="list-item" id="req-' + r.id + '">' +
+          '<div><strong>' + escHtml(name) + '</strong> <span class="text-muted">(' + escHtml(login) + ')</span></div>' +
+          '<div class="actions">' +
+            '<button class="btn btn-success btn-sm" onclick="acceptRequest(\'' + r.id + '\')">Принять</button>' +
+            '<button class="btn btn-danger btn-sm" onclick="rejectRequest(\'' + r.id + '\')">Отклонить</button>' +
+          '</div>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  } catch(err) {
+    showToast(err.message, 'error');
+  }
+}
+
+async function acceptRequest(id) {
+  try {
+    await API.put('/connections/requests/' + id + '/accept');
+    showToast('Заявка принята', 'success');
+    var el = document.getElementById('req-' + id);
+    if (el) el.remove();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function rejectRequest(id) {
+  try {
+    await API.put('/connections/requests/' + id + '/reject');
+    showToast('Заявка отклонена', 'info');
+    var el = document.getElementById('req-' + id);
+    if (el) el.remove();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== COACH: My Athletes ====================
+async function renderCoachAthletes() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<div class="section-header"><h2>Мои спортсмены</h2>' +
+    '<button class="btn btn-primary" id="create-plan-btn" disabled>Создать план для выбранных</button></div>' +
+    '<div id="athletes-list"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/connections/athletes');
+    var items = Array.isArray(data) ? data : (data.items || data.athletes || []);
+    var el = document.getElementById('athletes-list');
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">У вас пока нет спортсменов</div>';
+      return;
+    }
+
+    var html =
+      '<table><thead><tr>' +
+        '<th><label class="checkbox-label"><input type="checkbox" id="select-all-athletes"> Выбрать всех</label></th>' +
+        '<th>Имя</th><th>Логин</th>' +
+      '</tr></thead><tbody>';
+
+    for (var i = 0; i < items.length; i++) {
+      var a = items[i];
+      var aid = a.athlete_id || a.id || a.user_id;
+      var name = a.full_name || a.athlete_full_name || '';
+      var login = a.login || a.athlete_login || '';
+      html +=
+        '<tr><td><input type="checkbox" class="athlete-cb" value="' + aid + '"></td>' +
+        '<td>' + escHtml(name) + '</td>' +
+        '<td>' + escHtml(login) + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+
+    qs('#select-all-athletes').onchange = function() {
+      var cbs = qsa('.athlete-cb');
+      for (var j = 0; j < cbs.length; j++) cbs[j].checked = this.checked;
+      updateCreatePlanBtn();
+    };
+
+    var cbs = qsa('.athlete-cb');
+    for (var j = 0; j < cbs.length; j++) {
+      cbs[j].onchange = updateCreatePlanBtn;
+    }
+
+    qs('#create-plan-btn').onclick = function() {
+      var selected = [];
+      var cbs = qsa('.athlete-cb:checked');
+      for (var k = 0; k < cbs.length; k++) selected.push(cbs[k].value);
+      App.selectedAthleteIds = selected;
+      window.location.hash = '#coach-create-plan';
+    };
+
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function updateCreatePlanBtn() {
+  var cbs = qsa('.athlete-cb:checked');
+  var btn = qs('#create-plan-btn');
+  if (btn) btn.disabled = cbs.length === 0;
+}
+
+// ==================== COACH: Groups ====================
+async function renderCoachGroups() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<div class="section-header"><h2>Группы</h2>' +
+    '<button class="btn btn-primary" onclick="showCreateGroupModal()">Создать группу</button></div>' +
+    '<div id="groups-list"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/groups');
+    var items = Array.isArray(data) ? data : (data.items || data.groups || []);
+    var el = document.getElementById('groups-list');
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет групп</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var g = items[i];
+      html +=
+        '<div class="list-item" style="cursor:pointer" onclick="window.location.hash=\'#coach-group-detail/' + g.id + '\'">' +
+          '<div><strong>' + escHtml(g.name) + '</strong> <span class="text-muted">(' + (g.members_count || 0) + ' участников)</span></div>' +
+          '<div class="actions"><span style="color:#2196F3">Подробнее &rarr;</span></div>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function showCreateGroupModal() {
+  var html =
+    '<form id="create-group-form">' +
+      '<label>Название группы</label>' +
+      '<input type="text" id="group-name-input" required>' +
+      '<button type="submit" class="btn btn-primary">Создать</button>' +
+    '</form>';
+  showModal('Создать группу', html);
+
+  qs('#create-group-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var name = qs('#group-name-input').value.trim();
+    if (!name) return;
+    try {
+      await API.post('/groups', { name: name });
+      showToast('Группа создана', 'success');
+      closeModal();
+      renderCoachGroups();
+    } catch(err) { showToast(err.message, 'error'); }
+  };
+}
+
+async function renderCoachGroupDetail(groupId) {
+  var c = document.getElementById('content');
+  c.innerHTML = '<div class="empty-state">Загрузка...</div>';
+
+  try {
+    var g = await API.get('/groups/' + groupId);
+    var members = g.members || [];
+
+    var html =
+      '<div class="group-detail-header">' +
+        '<a href="#coach-groups" class="btn btn-secondary btn-sm">&larr; Назад</a>' +
+        '<h2>' + escHtml(g.name) + '</h2>' +
+      '</div>' +
+      '<div class="mb-12"><button class="btn btn-primary btn-sm" onclick="showAddMemberModal(\'' + groupId + '\')">Добавить спортсмена</button></div>' +
+      '<div id="group-members">';
+
+    if (members.length === 0) {
+      html += '<div class="empty-state">В группе нет участников</div>';
+    } else {
+      html += '<table><thead><tr><th>Имя</th><th>Логин</th><th>Действия</th></tr></thead><tbody>';
+      for (var i = 0; i < members.length; i++) {
+        var m = members[i];
+        var mid = m.id || m.user_id || m.athlete_id;
+        html +=
+          '<tr>' +
+            '<td>' + escHtml(m.full_name || '') + '</td>' +
+            '<td>' + escHtml(m.login || '') + '</td>' +
+            '<td><button class="btn btn-danger btn-sm" onclick="removeGroupMember(\'' + groupId + '\',\'' + mid + '\')">Удалить из группы</button></td>' +
+          '</tr>';
+      }
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    c.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function showAddMemberModal(groupId) {
+  var html =
+    '<div class="search-box">' +
+      '<label>Поиск спортсмена</label>' +
+      '<input type="text" id="member-search-input" placeholder="Начните вводить имя...">' +
+      '<div class="search-results" id="member-search-results" style="display:none"></div>' +
+    '</div>';
+  showModal('Добавить спортсмена', html);
+
+  var timer = null;
+  qs('#member-search-input').oninput = function() {
+    clearTimeout(timer);
+    var q = this.value.trim();
+    if (q.length < 1) { qs('#member-search-results').style.display = 'none'; return; }
+    timer = setTimeout(async function() {
+      try {
+        var data = await API.get('/users/search?q=' + encodeURIComponent(q) + '&role=athlete');
+        var items = Array.isArray(data) ? data : (data.items || data.users || []);
+        var el = qs('#member-search-results');
+        if (items.length === 0) {
+          el.innerHTML = '<div style="padding:8px 12px;color:#999">Не найдено</div>';
+          el.style.display = 'block';
+          return;
+        }
+        var h = '';
+        for (var i = 0; i < items.length; i++) {
+          var u = items[i];
+          h +=
+            '<div class="search-item">' +
+              '<span>' + escHtml(u.full_name || '') + ' (' + escHtml(u.login || '') + ')</span>' +
+              '<button class="btn btn-success btn-sm" onclick="addGroupMember(\'' + groupId + '\',\'' + u.id + '\')">Добавить</button>' +
+            '</div>';
+        }
+        el.innerHTML = h;
+        el.style.display = 'block';
+      } catch(err) { showToast(err.message, 'error'); }
+    }, 300);
+  };
+}
+
+async function addGroupMember(groupId, userId) {
+  try {
+    await API.post('/groups/' + groupId + '/members', { user_id: userId });
+    showToast('Спортсмен добавлен в группу', 'success');
+    closeModal();
+    renderCoachGroupDetail(groupId);
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function removeGroupMember(groupId, memberId) {
+  if (!confirm('Удалить спортсмена из группы?')) return;
+  try {
+    await API.del('/groups/' + groupId + '/members/' + memberId);
+    showToast('Спортсмен удалён из группы', 'success');
+    renderCoachGroupDetail(groupId);
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== COACH: Create Plan ====================
+async function renderCoachCreatePlan() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Создать план</h2><div id="plan-form-container"><div class="empty-state">Загрузка...</div></div>';
+
+  var athletes = [];
+  var groups = [];
+  var templates = [];
+
+  try {
+    var results = await Promise.all([
+      API.get('/connections/athletes').catch(function() { return []; }),
+      API.get('/groups').catch(function() { return []; }),
+      API.get('/training/templates').catch(function() { return []; })
+    ]);
+
+    var ad = results[0];
+    athletes = Array.isArray(ad) ? ad : (ad.items || ad.athletes || []);
+    var gd = results[1];
+    groups = Array.isArray(gd) ? gd : (gd.items || gd.groups || []);
+    var td = results[2];
+    templates = Array.isArray(td) ? td : (td.items || td.templates || []);
+  } catch(err) { /* proceed with empty */ }
+
+  var html =
+    '<form id="create-plan-form" class="card" style="max-width:700px">' +
+      '<label>Из шаблона</label>' +
+      '<select id="plan-template">' +
+        '<option value="">-- без шаблона --</option>';
+  for (var t = 0; t < templates.length; t++) {
+    html += '<option value="' + t + '">' + escHtml(templates[t].title) + '</option>';
+  }
+  html +=
+      '</select>' +
+      '<label>Название</label>' +
+      '<input type="text" id="plan-title" required>' +
+      '<label>Описание</label>' +
+      '<textarea id="plan-description"></textarea>' +
+      '<label>Дата</label>' +
+      '<input type="date" id="plan-date" required>' +
+      '<hr style="margin:16px 0">' +
+      '<label>Получатели</label>' +
+      '<div class="radio-group mb-12">' +
+        '<label><input type="radio" name="recipient-type" value="athletes" checked> Выбрать спортсменов</label>' +
+        '<label><input type="radio" name="recipient-type" value="group"> Выбрать группу</label>' +
+      '</div>' +
+      '<div id="recipient-athletes">';
+
+  if (athletes.length === 0) {
+    html += '<div class="text-muted">Нет доступных спортсменов</div>';
+  } else {
+    for (var i = 0; i < athletes.length; i++) {
+      var a = athletes[i];
+      var aid = a.athlete_id || a.id || a.user_id;
+      var checked = App.selectedAthleteIds.indexOf(String(aid)) >= 0 ? ' checked' : '';
+      html +=
+        '<label class="checkbox-label mb-8">' +
+          '<input type="checkbox" class="plan-athlete-cb" value="' + aid + '"' + checked + '> ' +
+          escHtml(a.full_name || a.athlete_full_name || '') +
+          ' <span class="text-muted">(' + escHtml(a.login || a.athlete_login || '') + ')</span>' +
+        '</label><br>';
+    }
+  }
+
+  html +=
+      '</div>' +
+      '<div id="recipient-group" style="display:none">' +
+        '<select id="plan-group">';
+  for (var g = 0; g < groups.length; g++) {
+    html += '<option value="' + groups[g].id + '">' + escHtml(groups[g].name) + '</option>';
+  }
+  if (groups.length === 0) html += '<option value="">Нет групп</option>';
+  html +=
+        '</select>' +
+      '</div>' +
+      '<hr style="margin:16px 0">' +
+      '<label class="checkbox-label mb-12"><input type="checkbox" id="plan-save-template"> Сохранить как шаблон</label>' +
+      '<button type="submit" class="btn btn-primary">Создать план</button>' +
+    '</form>';
+
+  document.getElementById('plan-form-container').innerHTML = html;
+
+  // Clear pre-selected
+  App.selectedAthleteIds = [];
+
+  // Template selector
+  qs('#plan-template').onchange = function() {
+    var idx = this.value;
+    if (idx === '') return;
+    var tmpl = templates[parseInt(idx)];
+    if (tmpl) {
+      qs('#plan-title').value = tmpl.title || '';
+      qs('#plan-description').value = tmpl.description || '';
+    }
+  };
+
+  // Recipient type toggle
+  var radios = qsa('input[name="recipient-type"]');
+  for (var r = 0; r < radios.length; r++) {
+    radios[r].onchange = function() {
+      qs('#recipient-athletes').style.display = this.value === 'athletes' ? 'block' : 'none';
+      qs('#recipient-group').style.display = this.value === 'group' ? 'block' : 'none';
+    };
+  }
+
+  // Form submit
+  qs('#create-plan-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var title = qs('#plan-title').value.trim();
+    var description = qs('#plan-description').value.trim();
+    var scheduled_date = qs('#plan-date').value;
+    var save_as_template = qs('#plan-save-template').checked;
+    var recipientType = qs('input[name="recipient-type"]:checked').value;
+
+    var payload = {
+      title: title,
+      description: description,
+      scheduled_date: scheduled_date,
+      save_as_template: save_as_template
+    };
+
+    if (recipientType === 'athletes') {
+      var cbs = qsa('.plan-athlete-cb:checked');
+      var ids = [];
+      for (var k = 0; k < cbs.length; k++) ids.push(cbs[k].value);
+      if (ids.length === 0) { showToast('Выберите хотя бы одного спортсмена', 'error'); return; }
+      payload.athlete_ids = ids;
+    } else {
+      var gid = qs('#plan-group').value;
+      if (!gid) { showToast('Выберите группу', 'error'); return; }
+      payload.group_id = gid;
+    }
+
+    try {
+      var result = await API.post('/training/plans', payload);
+      showToast('План создан!', 'success');
+      // Show result
+      var assignments = result.assignments || [];
+      if (assignments.length > 0) {
+        var msg = 'Создано заданий: ' + assignments.length;
+        showToast(msg, 'info');
+      }
+      window.location.hash = '#coach-assignments';
+    } catch(err) { showToast(err.message, 'error'); }
+  };
+}
+
+// ==================== COACH: Assignments ====================
+async function renderCoachAssignments() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<h2>Выданные задания</h2>' +
+    '<div class="filter-bar">' +
+      '<div class="filter-group"><label>Спортсмен</label><input type="text" id="filter-athlete" placeholder="Имя..."></div>' +
+      '<div class="filter-group"><label>Дата от</label><input type="date" id="filter-date-from"></div>' +
+      '<div class="filter-group"><label>Дата до</label><input type="date" id="filter-date-to"></div>' +
+      '<div class="filter-group"><button class="btn btn-primary btn-sm" onclick="applyAssignmentFilter()">Фильтр</button></div>' +
+    '</div>' +
+    '<div id="assignments-table"><div class="empty-state">Загрузка...</div></div>';
+
+  loadCoachAssignments();
+}
+
+async function loadCoachAssignments(params) {
+  try {
+    var url = '/training/assignments';
+    var qp = [];
+    if (params) {
+      if (params.athlete) qp.push('athlete_full_name=' + encodeURIComponent(params.athlete));
+      if (params.date_from) qp.push('date_from=' + params.date_from);
+      if (params.date_to) qp.push('date_to=' + params.date_to);
+    }
+    if (qp.length > 0) url += '?' + qp.join('&');
+
+    var data = await API.get(url);
+    var items = Array.isArray(data) ? data : (data.items || data.assignments || []);
+    var el = document.getElementById('assignments-table');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет заданий</div>';
+      return;
+    }
+
+    var html =
+      '<table><thead><tr><th>Спортсмен</th><th>Логин</th><th>Название</th><th>Дата</th><th>Статус</th><th>Действия</th></tr></thead><tbody>';
+
+    for (var i = 0; i < items.length; i++) {
+      var a = items[i];
+      var rowClass = a.is_overdue ? ' class="overdue"' : '';
+      html +=
+        '<tr' + rowClass + '>' +
+          '<td>' + escHtml(a.athlete_full_name || '') + '</td>' +
+          '<td>' + escHtml(a.athlete_login || '') + '</td>' +
+          '<td>' + escHtml(a.title || '') + '</td>' +
+          '<td>' + formatDate(a.scheduled_date) + '</td>' +
+          '<td>' + escHtml(a.status || '') + (a.is_overdue ? ' (просрочено)' : '') + '</td>' +
+          '<td>' +
+            '<button class="btn btn-secondary btn-sm" onclick="loadAndShowDescription(\'' + a.id + '\', \'' + escHtml(a.title || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')">Описание</button> ';
+
+      if (a.has_report) {
+        html += '<button class="btn btn-primary btn-sm" onclick="viewReport(\'' + a.id + '\')">Отчёт</button> ';
+        html += '<button class="btn btn-success btn-sm" onclick="archiveAssignment(\'' + a.id + '\')">В архив</button> ';
+      }
+
+      html += '<button class="btn btn-danger btn-sm" onclick="deleteAssignment(\'' + a.id + '\')">Удалить</button>';
+      html += '</td></tr>';
+    }
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function applyAssignmentFilter() {
+  var params = {
+    athlete: (qs('#filter-athlete') || {}).value || '',
+    date_from: (qs('#filter-date-from') || {}).value || '',
+    date_to: (qs('#filter-date-to') || {}).value || ''
+  };
+  loadCoachAssignments(params);
+}
+
+function showDescriptionModal(title, description) {
+  showModal(title, '<p style="white-space:pre-wrap">' + escHtml(description) + '</p>');
+}
+
+async function loadAndShowDescription(assignmentId, title) {
+  try {
+    var detail = await API.get('/training/assignments/' + assignmentId);
+    showModal(title || detail.title || 'Описание задания',
+      '<p style="white-space:pre-wrap">' + escHtml(detail.description || 'Описание отсутствует') + '</p>');
+  } catch(err) { showToast('Не удалось загрузить описание: ' + err.message, 'error'); }
+}
+
+async function viewReport(assignmentId) {
+  try {
+    var report = await API.get('/training/assignments/' + assignmentId + '/report');
+    var html =
+      '<table>' +
+        '<tr><th>Содержание</th><td style="white-space:pre-wrap">' + escHtml(report.content || '') + '</td></tr>' +
+        '<tr><th>Длительность (мин)</th><td>' + (report.duration_minutes || '-') + '</td></tr>' +
+        '<tr><th>Воспринимаемая нагрузка</th><td>' + (report.perceived_effort != null ? report.perceived_effort : '-') + ' / 10</td></tr>' +
+        '<tr><th>Макс. ЧСС</th><td>' + (report.max_heart_rate || '-') + '</td></tr>' +
+        '<tr><th>Средн. ЧСС</th><td>' + (report.avg_heart_rate || '-') + '</td></tr>' +
+        '<tr><th>Дистанция (км)</th><td>' + (report.distance_km || '-') + '</td></tr>' +
+        '<tr><th>Дата отчёта</th><td>' + formatDateTime(report.created_at || report.submitted_at || '') + '</td></tr>' +
+      '</table>';
+    showModal('Отчёт', html);
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function archiveAssignment(id) {
+  try {
+    await API.put('/training/assignments/' + id + '/archive');
+    showToast('Задание отправлено в архив', 'success');
+    renderCoachAssignments();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function deleteAssignment(id) {
+  if (!confirm('Удалить задание?')) return;
+  try {
+    await API.del('/training/assignments/' + id);
+    showToast('Задание удалено', 'success');
+    renderCoachAssignments();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== COACH: Archive ====================
+async function renderCoachArchive() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Архив</h2><div id="archive-table"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/training/assignments/archived');
+    var items = Array.isArray(data) ? data : (data.items || data.assignments || []);
+    var el = document.getElementById('archive-table');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Архив пуст</div>';
+      return;
+    }
+
+    var html =
+      '<table><thead><tr><th>Спортсмен</th><th>Логин</th><th>Название</th><th>Дата</th><th>Статус</th></tr></thead><tbody>';
+
+    for (var i = 0; i < items.length; i++) {
+      var a = items[i];
+      html +=
+        '<tr>' +
+          '<td>' + escHtml(a.athlete_full_name || '') + '</td>' +
+          '<td>' + escHtml(a.athlete_login || '') + '</td>' +
+          '<td>' + escHtml(a.title || '') + '</td>' +
+          '<td>' + formatDate(a.scheduled_date) + '</td>' +
+          '<td>' + escHtml(a.status || 'archived') + '</td>' +
+        '</tr>';
+    }
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== COACH: Templates ====================
+async function renderCoachTemplates() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<div class="section-header"><h2>Шаблоны</h2>' +
+    '<button class="btn btn-primary" onclick="showCreateTemplateModal()">Создать шаблон</button></div>' +
+    '<div id="templates-list"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/training/templates');
+    var items = Array.isArray(data) ? data : (data.items || data.templates || []);
+    var el = document.getElementById('templates-list');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет шаблонов</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var t = items[i];
+      html +=
+        '<div class="list-item">' +
+          '<div style="cursor:pointer; flex:1" onclick="showTemplateDetail(' + JSON.stringify(JSON.stringify(t.title || '')) + ', ' + JSON.stringify(JSON.stringify(t.description || '')) + ')">' +
+            '<strong>' + escHtml(t.title) + '</strong>' +
+          '</div>' +
+          '<div class="actions">' +
+            '<button class="btn btn-danger btn-sm" onclick="deleteTemplate(\'' + t.id + '\')">Удалить</button>' +
+          '</div>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function showTemplateDetail(title, description) {
+  showModal(title, '<p style="white-space:pre-wrap">' + escHtml(description) + '</p>');
+}
+
+function showCreateTemplateModal() {
+  var html =
+    '<form id="create-template-form">' +
+      '<label>Название</label>' +
+      '<input type="text" id="template-title" required>' +
+      '<label>Описание</label>' +
+      '<textarea id="template-description" rows="6"></textarea>' +
+      '<button type="submit" class="btn btn-primary mt-12">Создать</button>' +
+    '</form>';
+  showModal('Создать шаблон', html);
+
+  qs('#create-template-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var title = qs('#template-title').value.trim();
+    var description = qs('#template-description').value.trim();
+    if (!title) return;
+    try {
+      await API.post('/training/templates', { title: title, description: description });
+      showToast('Шаблон создан', 'success');
+      closeModal();
+      renderCoachTemplates();
+    } catch(err) { showToast(err.message, 'error'); }
+  };
+}
+
+async function deleteTemplate(id) {
+  if (!confirm('Удалить шаблон?')) return;
+  try {
+    await API.del('/training/templates/' + id);
+    showToast('Шаблон удалён', 'success');
+    renderCoachTemplates();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== ATHLETE: Find Coach ====================
+function renderAthleteFindCoach() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<h2>Найти тренера</h2>' +
+    '<div class="card" style="max-width:600px">' +
+      '<label>Поиск</label>' +
+      '<input type="text" id="coach-search-input" placeholder="Введите имя или логин тренера...">' +
+      '<div id="coach-search-results"></div>' +
+    '</div>';
+
+  var timer = null;
+  qs('#coach-search-input').oninput = function() {
+    clearTimeout(timer);
+    var q = this.value.trim();
+    var el = qs('#coach-search-results');
+    if (q.length < 1) { el.innerHTML = ''; return; }
+    timer = setTimeout(async function() {
+      try {
+        var data = await API.get('/users/search?q=' + encodeURIComponent(q) + '&role=coach');
+        var items = Array.isArray(data) ? data : (data.items || data.users || []);
+        if (items.length === 0) {
+          el.innerHTML = '<div class="text-muted mt-12">Тренеры не найдены</div>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < items.length; i++) {
+          var u = items[i];
+          html +=
+            '<div class="list-item">' +
+              '<div><strong>' + escHtml(u.full_name || '') + '</strong> <span class="text-muted">(' + escHtml(u.login || '') + ')</span></div>' +
+              '<button class="btn btn-primary btn-sm" onclick="sendConnectionRequest(\'' + u.id + '\')">Отправить заявку</button>' +
+            '</div>';
+        }
+        el.innerHTML = html;
+      } catch(err) { showToast(err.message, 'error'); }
+    }, 300);
+  };
+}
+
+async function sendConnectionRequest(coachId) {
+  try {
+    await API.post('/connections/request', { coach_id: coachId });
+    showToast('Заявка отправлена!', 'success');
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== ATHLETE: My Coach ====================
+async function renderAthleteMyCoach() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Мой тренер</h2><div id="coach-info"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/connections/coach');
+    var el = document.getElementById('coach-info');
+    if (!data || (!data.id && !data.coach_id)) {
+      el.innerHTML = '<div class="empty-state">Вы не привязаны к тренеру</div>';
+      return;
+    }
+    el.innerHTML =
+      '<div class="card" style="max-width:400px">' +
+        '<h3>' + escHtml(data.full_name || data.coach_full_name || '') + '</h3>' +
+        '<p class="text-muted">Логин: ' + escHtml(data.login || data.coach_login || '') + '</p>' +
+        (data.connected_at ? '<p class="text-muted">Подключено: ' + formatDateTime(data.connected_at) + '</p>' : '') +
+      '</div>';
+  } catch(err) {
+    var el = document.getElementById('coach-info');
+    if (err.message && (err.message.includes('404') || err.message.toLowerCase().includes('не найден') || err.message.toLowerCase().includes('not found'))) {
+      el.innerHTML = '<div class="empty-state">Вы не привязаны к тренеру</div>';
+    } else {
+      showToast(err.message, 'error');
+    }
+  }
+}
+
+// ==================== ATHLETE: My Groups ====================
+async function renderAthleteGroups() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Мои группы</h2><div id="athlete-groups-list"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/groups');
+    var items = Array.isArray(data) ? data : (data.items || data.groups || []);
+    var el = document.getElementById('athlete-groups-list');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Вы не состоите ни в одной группе</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var g = items[i];
+      html +=
+        '<div class="list-item">' +
+          '<div><strong>' + escHtml(g.name) + '</strong> <span class="text-muted">(' + (g.members_count || 0) + ' участников)</span></div>' +
+        '</div>';
+    }
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== ATHLETE: My Assignments ====================
+async function renderAthleteAssignments() {
+  var c = document.getElementById('content');
+  c.innerHTML = '<h2>Мои задания</h2><div id="athlete-assignments-table"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/training/assignments');
+    var items = Array.isArray(data) ? data : (data.items || data.assignments || []);
+    var el = document.getElementById('athlete-assignments-table');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет заданий</div>';
+      return;
+    }
+
+    var html =
+      '<table><thead><tr><th>Название</th><th>Дата</th><th>Тренер</th><th>Статус</th><th>Действия</th></tr></thead><tbody>';
+
+    for (var i = 0; i < items.length; i++) {
+      var a = items[i];
+      var rowClass = a.is_overdue ? ' class="overdue"' : '';
+      html +=
+        '<tr' + rowClass + '>' +
+          '<td>' + escHtml(a.title || '') + '</td>' +
+          '<td>' + formatDate(a.scheduled_date) + '</td>' +
+          '<td>' + escHtml(a.coach_full_name || '') + '</td>' +
+          '<td>' + escHtml(a.status || '') + (a.is_overdue ? ' (просрочено)' : '') + '</td>' +
+          '<td>' +
+            '<button class="btn btn-secondary btn-sm" onclick="loadAndShowDescription(\'' + a.id + '\', \'' + escHtml(a.title || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'") + '\')">Описание</button> ' +
+            '<button class="btn btn-primary btn-sm" onclick="showReportForm(\'' + a.id + '\')">Отправить отчёт</button>' +
+          '</td>' +
+        '</tr>';
+    }
+
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+function showReportForm(assignmentId) {
+  var html =
+    '<form id="report-form">' +
+      '<label>Содержание отчёта</label>' +
+      '<textarea id="report-content" rows="4" required></textarea>' +
+
+      '<label>Длительность (минуты)</label>' +
+      '<input type="number" id="report-duration" min="0" required>' +
+
+      '<label>Воспринимаемая нагрузка: <span id="effort-label">5</span> / 10</label>' +
+      '<input type="range" id="report-effort" min="0" max="10" value="5" oninput="document.getElementById(\'effort-label\').textContent=this.value">' +
+
+      '<label>Макс. ЧСС (необязательно)</label>' +
+      '<input type="number" id="report-max-hr" min="0">' +
+
+      '<label>Средн. ЧСС (необязательно)</label>' +
+      '<input type="number" id="report-avg-hr" min="0">' +
+
+      '<label>Дистанция, км (необязательно)</label>' +
+      '<input type="number" id="report-distance" min="0" step="0.01">' +
+
+      '<button type="submit" class="btn btn-primary mt-12">Отправить</button>' +
+    '</form>';
+  showModal('Отправить отчёт', html);
+
+  qs('#report-form').onsubmit = async function(e) {
+    e.preventDefault();
+    var payload = {
+      content: qs('#report-content').value.trim(),
+      duration_minutes: parseInt(qs('#report-duration').value) || 0,
+      perceived_effort: parseInt(qs('#report-effort').value)
+    };
+
+    var maxHr = qs('#report-max-hr').value;
+    if (maxHr) payload.max_heart_rate = parseInt(maxHr);
+    var avgHr = qs('#report-avg-hr').value;
+    if (avgHr) payload.avg_heart_rate = parseInt(avgHr);
+    var dist = qs('#report-distance').value;
+    if (dist) payload.distance_km = parseFloat(dist);
+
+    try {
+      await API.post('/training/assignments/' + assignmentId + '/report', payload);
+      showToast('Отчёт отправлен!', 'success');
+      closeModal();
+      renderAthleteAssignments();
+    } catch(err) { showToast(err.message, 'error'); }
+  };
+}
+
+// ==================== NOTIFICATIONS (Both) ====================
+async function renderNotifications() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<div class="section-header"><h2>Уведомления</h2>' +
+    '<button class="btn btn-secondary" onclick="markAllNotificationsRead()">Прочитать все</button></div>' +
+    '<div id="notifications-list"><div class="empty-state">Загрузка...</div></div>';
+
+  try {
+    var data = await API.get('/notifications');
+    var items = Array.isArray(data) ? data : (data.items || data.notifications || []);
+    var el = document.getElementById('notifications-list');
+
+    if (items.length === 0) {
+      el.innerHTML = '<div class="empty-state">Нет уведомлений</div>';
+      return;
+    }
+
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      var n = items[i];
+      var unreadClass = n.is_read ? '' : ' unread';
+      var typeClass = n.type || 'default';
+      var typeLabel = {
+        'connection_request': 'Заявка',
+        'connection_accepted': 'Принята',
+        'connection_rejected': 'Отклонена',
+        'new_assignment': 'Задание',
+        'report_submitted': 'Отчёт',
+        'assignment_archived': 'Архив'
+      }[n.type] || (n.type || 'Уведомление');
+
+      html +=
+        '<div class="list-item' + unreadClass + '" id="notif-' + n.id + '">' +
+          '<div style="flex:1">' +
+            '<span class="notif-badge ' + typeClass + '">' + escHtml(typeLabel) + '</span>' +
+            '<strong>' + escHtml(n.title || '') + '</strong>' +
+            '<div style="margin-top:4px">' + escHtml(n.body || n.message || '') + '</div>' +
+            '<div class="text-muted" style="margin-top:4px">' + formatDateTime(n.created_at) + '</div>' +
+          '</div>' +
+          '<div class="actions">';
+
+      if (!n.is_read) {
+        html += '<button class="btn btn-primary btn-sm" onclick="markNotificationRead(\'' + n.id + '\')">Прочитать</button>';
+      }
+
+      html += '</div></div>';
+    }
+    el.innerHTML = html;
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function markNotificationRead(id) {
+  try {
+    await API.put('/notifications/' + id + '/read');
+    var el = document.getElementById('notif-' + id);
+    if (el) {
+      el.classList.remove('unread');
+      var btn = el.querySelector('.btn-primary');
+      if (btn) btn.remove();
+    }
+    App.fetchUnreadCount();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function markAllNotificationsRead() {
+  try {
+    await API.put('/notifications/read-all');
+    showToast('Все уведомления прочитаны', 'success');
+    App.unreadCount = 0;
+    App.renderSidebar();
+    renderNotifications();
+  } catch(err) { showToast(err.message, 'error'); }
+}
+
+// ==================== Init ====================
+App.init();
+</script>
+</body>
+</html>

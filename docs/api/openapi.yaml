@@ -1,0 +1,2338 @@
+openapi: 3.0.3
+info:
+  title: CoachLink Platform API
+  description: |
+    API для платформы автоматизации тренировочного процесса
+    и взаимодействия в системе «тренер — спортсмен».
+
+    ## Аутентификация
+    Все запросы (кроме /auth/*) требуют JWT access-token
+    в заголовке `Authorization: Bearer <token>`.
+
+    ## Роли
+    - `coach` — тренер
+    - `athlete` — спортсмен
+
+    ## Формат дат
+    - Даты в формате ISO 8601: `2026-03-28`
+    - Timestamps в формате ISO 8601 с таймзоной: `2026-03-28T12:00:00Z`
+
+    ## Пагинация
+    Списочные эндпоинты поддерживают query-параметры `page` и `page_size`.
+    Ответ содержит объект `pagination` с метаданными.
+  version: 1.0.0
+  contact:
+    name: CoachLink Team
+
+servers:
+  - url: http://localhost:8080
+    description: Local development (API Gateway)
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, управление токенами
+  - name: Users
+    description: Профили пользователей, поиск
+  - name: Connections
+    description: Связи «тренер — спортсмен», заявки
+  - name: Groups
+    description: Тренировочные группы
+  - name: Training
+    description: Тренировочные планы, назначения
+  - name: Reports
+    description: Отчёты спортсменов
+  - name: Templates
+    description: Шаблоны тренировок
+  - name: Notifications
+    description: Уведомления
+  - name: Internal
+    description: |
+      Внутренние эндпоинты для межсервисного взаимодействия.
+      **Не предназначены для мобильного клиента** — используются только между бэкенд-сервисами.
+
+# ============================================================
+# PATHS
+# ============================================================
+paths:
+
+  # ----------------------------------------------------------
+  # AUTH
+  # ----------------------------------------------------------
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация нового пользователя
+      operationId: register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Пользователь успешно зарегистрирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidLogin:
+                  summary: Невалидный логин
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: "login must contain only latin letters, digits and hyphens"
+        '409':
+          description: Логин уже занят
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                loginTaken:
+                  summary: Логин уже существует
+                  value:
+                    error:
+                      code: LOGIN_ALREADY_EXISTS
+                      message: "User with login 'ivan123' already exists"
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход в систему
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Успешный вход
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Неверный логин или пароль
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidCredentials:
+                  value:
+                    error:
+                      code: INVALID_CREDENTIALS
+                      message: "Invalid login or password"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Обновление access-token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Токены обновлены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401':
+          description: Невалидный или просроченный refresh-token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Выход (отзыв refresh-token)
+      operationId: logout
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogoutRequest'
+      responses:
+        '204':
+          description: Успешный выход
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ----------------------------------------------------------
+  # USERS
+  # ----------------------------------------------------------
+  /api/v1/users/me:
+    get:
+      tags: [Users]
+      summary: Получить профиль текущего пользователя
+      operationId: getMyProfile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Профиль пользователя
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/users/search:
+    get:
+      tags: [Users]
+      summary: Поиск пользователей по ФИО или логину
+      description: |
+        Используется для:
+        - Поиск тренера (спортсмен ищет тренера для привязки)
+        - Поиск спортсмена (тренер ищет спортсмена для добавления в группу)
+
+        Поиск работает по подстроке (автодополнение).
+        Минимальная длина запроса: 2 символа.
+      operationId: searchUsers
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Строка поиска (ФИО или логин), минимум 2 символа
+          schema:
+            type: string
+            minLength: 2
+            example: "Иванов"
+        - name: role
+          in: query
+          required: false
+          description: Фильтр по роли
+          schema:
+            type: string
+            enum: [coach, athlete]
+            example: coach
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Результаты поиска
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserProfile'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ----------------------------------------------------------
+  # CONNECTIONS
+  # ----------------------------------------------------------
+  /api/v1/connections/request:
+    post:
+      tags: [Connections]
+      summary: Отправить заявку тренеру
+      description: |
+        Спортсмен отправляет заявку на привязку к тренеру.
+        У спортсмена может быть только один тренер.
+        Если спортсмен уже привязан к тренеру, запрос вернёт ошибку.
+      operationId: sendConnectionRequest
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConnectionRequestCreate'
+      responses:
+        '201':
+          description: Заявка отправлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionRequest'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Только спортсмен может отправлять заявки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Заявка уже существует или спортсмен уже привязан к тренеру
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyHasCoach:
+                  value:
+                    error:
+                      code: ALREADY_HAS_COACH
+                      message: "Athlete is already connected to a coach"
+                requestExists:
+                  value:
+                    error:
+                      code: REQUEST_ALREADY_EXISTS
+                      message: "A pending request to this coach already exists"
+
+  /api/v1/connections/requests/incoming:
+    get:
+      tags: [Connections]
+      summary: Получить входящие заявки (для тренера)
+      operationId: getIncomingRequests
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Фильтр по статусу
+          schema:
+            type: string
+            enum: [pending, accepted, rejected]
+            default: pending
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список заявок
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConnectionRequest'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/connections/requests/outgoing:
+    get:
+      tags: [Connections]
+      summary: Получить исходящую заявку (для спортсмена)
+      description: Возвращает текущую заявку спортсмена (pending), если она есть.
+      operationId: getOutgoingRequest
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Текущая заявка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только спортсменам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Нет активной заявки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/connections/requests/{requestId}/accept:
+    put:
+      tags: [Connections]
+      summary: Принять заявку спортсмена
+      operationId: acceptConnectionRequest
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Заявка принята
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша заявка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/connections/requests/{requestId}/reject:
+    put:
+      tags: [Connections]
+      summary: Отклонить заявку спортсмена
+      operationId: rejectConnectionRequest
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Заявка отклонена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectionRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша заявка
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/connections/athletes:
+    get:
+      tags: [Connections]
+      summary: Список спортсменов тренера
+      description: Возвращает список спортсменов, привязанных к текущему тренеру.
+      operationId: getCoachAthletes
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Поиск по ФИО или логину среди своих спортсменов
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Список спортсменов
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AthleteInfo'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/connections/coach:
+    get:
+      tags: [Connections]
+      summary: Получить информацию о тренере спортсмена
+      operationId: getAthleteCoach
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Информация о тренере
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachInfo'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только спортсменам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Спортсмен не привязан к тренеру
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/connections/athletes/{athleteId}:
+    delete:
+      tags: [Connections]
+      summary: Отвязать спортсмена
+      operationId: removeAthlete
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      responses:
+        '204':
+          description: Спортсмен отвязан
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваш спортсмен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------
+  # GROUPS
+  # ----------------------------------------------------------
+  /api/v1/groups:
+    post:
+      tags: [Groups]
+      summary: Создать тренировочную группу
+      operationId: createGroup
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: Группа создана
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Groups]
+      summary: Список тренировочных групп
+      description: |
+        - Тренер видит свои группы.
+        - Спортсмен видит группы, в которых он состоит.
+      operationId: getGroups
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список групп
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrainingGroupSummary'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/groups/{groupId}:
+    get:
+      tags: [Groups]
+      summary: Детали группы с составом
+      operationId: getGroup
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - name: q
+          in: query
+          required: false
+          description: Поиск по ФИО или логину внутри группы
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Детали группы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingGroupDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к этой группе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Groups]
+      summary: Обновить название группы
+      operationId: updateGroup
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+      responses:
+        '200':
+          description: Группа обновлена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingGroup'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша группа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Groups]
+      summary: Удалить группу
+      operationId: deleteGroup
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      responses:
+        '204':
+          description: Группа удалена
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша группа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/groups/{groupId}/members:
+    post:
+      tags: [Groups]
+      summary: Добавить спортсмена в группу
+      operationId: addGroupMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddGroupMemberRequest'
+      responses:
+        '201':
+          description: Спортсмен добавлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupMember'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша группа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Спортсмен уже в группе
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/groups/{groupId}/members/{athleteId}:
+    delete:
+      tags: [Groups]
+      summary: Удалить спортсмена из группы
+      operationId: removeGroupMember
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - $ref: '#/components/parameters/AthleteId'
+      responses:
+        '204':
+          description: Спортсмен удалён из группы
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваша группа
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------
+  # INTERNAL API (service-to-service, not for mobile clients)
+  # ----------------------------------------------------------
+  /internal/users/{userId}:
+    get:
+      tags: [Internal]
+      summary: '[Internal] Получить профиль пользователя по ID'
+      description: |
+        **Внутренний эндпоинт для межсервисного взаимодействия.**
+        Используется Training Service для получения ФИО и логина спортсмена
+        при создании тренировочных планов с индивидуальными athlete_ids.
+        Не требует JWT-авторизации. Не предназначен для мобильного клиента.
+      operationId: internalGetUser
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Профиль пользователя (упрощённый)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  athlete_id:
+                    type: string
+                    format: uuid
+                  full_name:
+                    type: string
+                  login:
+                    type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /internal/groups/{groupId}/members:
+    get:
+      tags: [Internal]
+      summary: '[Internal] Получить список участников группы'
+      description: |
+        **Внутренний эндпоинт для межсервисного взаимодействия.**
+        Используется Training Service для получения состава группы
+        при назначении тренировки по group_id.
+        Не требует JWT-авторизации. Не предназначен для мобильного клиента.
+      operationId: internalGetGroupMembers
+      parameters:
+        - name: groupId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Список участников
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    athlete_id:
+                      type: string
+                      format: uuid
+                    full_name:
+                      type: string
+                    login:
+                      type: string
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------
+  # TRAINING
+  # ----------------------------------------------------------
+  /api/v1/training/plans:
+    post:
+      tags: [Training]
+      summary: Создать тренировочный план и назначить спортсменам
+      description: |
+        Тренер создаёт план и назначает его:
+        - Конкретным спортсменам (по `athlete_ids`)
+        - Группе (по `group_id` — назначается всем спортсменам в группе)
+
+        Должен быть указан хотя бы один из параметров: `athlete_ids` или `group_id`.
+        Можно указать оба — тогда задание получат все указанные спортсмены
+        плюс все спортсмены из группы (без дублирования).
+      operationId: createTrainingPlan
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTrainingPlanRequest'
+      responses:
+        '201':
+          description: План создан, задания назначены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateTrainingPlanResponse'
+        '400':
+          description: Ошибка валидации (например, не указаны получатели)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/training/assignments:
+    get:
+      tags: [Training]
+      summary: Список назначений
+      description: |
+        - **Тренер** видит выданные задания (не архивированные).
+        - **Спортсмен** видит свои назначения со статусом `assigned`.
+
+        Поддерживает фильтрацию и сортировку.
+      operationId: getAssignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: athlete_full_name
+          in: query
+          required: false
+          description: Фильтр по ФИО спортсмена (подстрока, только для тренера)
+          schema:
+            type: string
+        - name: athlete_login
+          in: query
+          required: false
+          description: Фильтр по логину спортсмена (подстрока, только для тренера)
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          required: false
+          description: Фильтр по дате начала (>=)
+          schema:
+            type: string
+            format: date
+            example: "2026-03-01"
+        - name: date_to
+          in: query
+          required: false
+          description: Фильтр по дате окончания (<=)
+          schema:
+            type: string
+            format: date
+            example: "2026-03-31"
+        - name: status
+          in: query
+          required: false
+          description: Фильтр по статусу (только для тренера)
+          schema:
+            type: string
+            enum: [assigned, completed]
+        - name: sort_by
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [date_asc, date_desc, name_asc, name_desc]
+            default: date_desc
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список назначений
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssignmentListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/training/assignments/archived:
+    get:
+      tags: [Training]
+      summary: Архив назначений (для тренера)
+      operationId: getArchivedAssignments
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: athlete_full_name
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: athlete_login
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: date_from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Архив назначений
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AssignmentListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/training/assignments/{assignmentId}:
+    get:
+      tags: [Training]
+      summary: Детали назначения
+      description: Возвращает полную информацию о назначении включая описание тренировки.
+      operationId: getAssignment
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      responses:
+        '200':
+          description: Детали назначения
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к этому назначению
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Training]
+      summary: Удалить назначение
+      description: Тренер удаляет назначение. Если к нему был отчёт, отчёт тоже удаляется.
+      operationId: deleteAssignment
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      responses:
+        '204':
+          description: Назначение удалено
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваше назначение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/training/assignments/{assignmentId}/archive:
+    put:
+      tags: [Training]
+      summary: Архивировать назначение
+      description: |
+        Тренер перемещает выполненное назначение в архив.
+        Назначение должно иметь статус `completed` (отчёт отправлен).
+      operationId: archiveAssignment
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      responses:
+        '200':
+          description: Назначение архивировано
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssignmentListItem'
+        '400':
+          description: Назначение ещё не выполнено
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам / это не ваше назначение
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------
+  # REPORTS
+  # ----------------------------------------------------------
+  /api/v1/training/assignments/{assignmentId}/report:
+    post:
+      tags: [Reports]
+      summary: Отправить отчёт по заданию
+      description: |
+        Спортсмен отправляет отчёт о выполненной тренировке.
+        После отправки статус назначения меняется на `completed`.
+        Повторная отправка невозможна.
+      operationId: submitReport
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReportRequest'
+      responses:
+        '201':
+          description: Отчёт отправлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingReport'
+        '400':
+          description: Ошибка валидации
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только спортсменам / это не ваше задание
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Отчёт уже был отправлен
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Reports]
+      summary: Просмотреть отчёт по заданию
+      description: |
+        Доступно:
+        - Тренеру, который выдал задание
+        - Спортсмену, который отправил отчёт
+      operationId: getReport
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AssignmentId'
+      responses:
+        '200':
+          description: Отчёт по заданию
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Нет доступа к этому отчёту
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Назначение или отчёт не найдены
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # ----------------------------------------------------------
+  # TEMPLATES
+  # ----------------------------------------------------------
+  /api/v1/training/templates:
+    post:
+      tags: [Templates]
+      summary: Создать шаблон тренировки
+      operationId: createTemplate
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTemplateRequest'
+      responses:
+        '201':
+          description: Шаблон создан
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags: [Templates]
+      summary: Список шаблонов тренера
+      operationId: getTemplates
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Поиск по заголовку шаблона
+          schema:
+            type: string
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Список шаблонов
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TrainingTemplate'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/training/templates/{templateId}:
+    get:
+      tags: [Templates]
+      summary: Детали шаблона
+      operationId: getTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '200':
+          description: Детали шаблона
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Это не ваш шаблон
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags: [Templates]
+      summary: Обновить шаблон
+      operationId: updateTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTemplateRequest'
+      responses:
+        '200':
+          description: Шаблон обновлён
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrainingTemplate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Это не ваш шаблон
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags: [Templates]
+      summary: Удалить шаблон
+      operationId: deleteTemplate
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TemplateId'
+      responses:
+        '204':
+          description: Шаблон удалён
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Это не ваш шаблон
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ----------------------------------------------------------
+  # NOTIFICATIONS
+  # ----------------------------------------------------------
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      summary: Список уведомлений текущего пользователя
+      operationId: getNotifications
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: is_read
+          in: query
+          required: false
+          description: Фильтр по статусу прочтения
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 30
+      responses:
+        '200':
+          description: Список уведомлений
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination, unread_count]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Notification'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+                  unread_count:
+                    type: integer
+                    description: Общее количество непрочитанных уведомлений
+                    example: 5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/{notificationId}/read:
+    put:
+      tags: [Notifications]
+      summary: Пометить уведомление прочитанным
+      operationId: markNotificationRead
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationId'
+      responses:
+        '200':
+          description: Уведомление помечено прочитанным
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Notification'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/v1/notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: Пометить все уведомления прочитанными
+      operationId: markAllNotificationsRead
+      security:
+        - BearerAuth: []
+      responses:
+        '204':
+          description: Все уведомления помечены прочитанными
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/notifications/device-token:
+    post:
+      tags: [Notifications]
+      summary: Зарегистрировать FCM-токен устройства
+      description: |
+        Клиент отправляет FCM-токен для получения push-уведомлений.
+        Если токен уже зарегистрирован — обновляет запись.
+      operationId: registerDeviceToken
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterDeviceTokenRequest'
+      responses:
+        '200':
+          description: Токен зарегистрирован
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+# ============================================================
+# COMPONENTS
+# ============================================================
+components:
+
+  # ----------------------------------------------------------
+  # Security Schemes
+  # ----------------------------------------------------------
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access-token, полученный при /auth/login или /auth/refresh
+
+  # ----------------------------------------------------------
+  # Parameters
+  # ----------------------------------------------------------
+  parameters:
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    AthleteId:
+      name: athleteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    AssignmentId:
+      name: assignmentId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    TemplateId:
+      name: templateId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    NotificationId:
+      name: notificationId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  # ----------------------------------------------------------
+  # Responses
+  # ----------------------------------------------------------
+  responses:
+    Unauthorized:
+      description: Не авторизован — невалидный или отсутствующий токен
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: "Invalid or expired access token"
+
+    NotFound:
+      description: Ресурс не найден
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: NOT_FOUND
+              message: "Resource not found"
+
+  # ----------------------------------------------------------
+  # Schemas
+  # ----------------------------------------------------------
+  schemas:
+
+    # === Auth ===
+
+    RegisterRequest:
+      type: object
+      required: [login, email, password, full_name, role]
+      properties:
+        login:
+          type: string
+          pattern: '^[a-zA-Z0-9-]+$'
+          minLength: 3
+          maxLength: 50
+          description: |
+            Уникальный логин. Только латинские буквы, цифры и дефис.
+          example: "ivan-petrov"
+        email:
+          type: string
+          format: email
+          example: "ivan@example.com"
+        password:
+          type: string
+          minLength: 8
+          maxLength: 128
+          description: Минимум 8 символов
+          example: "securePassword123"
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 255
+          description: ФИО пользователя
+          example: "Петров Иван Сергеевич"
+        role:
+          type: string
+          enum: [coach, athlete]
+          description: Роль пользователя в системе
+          example: "athlete"
+
+    LoginRequest:
+      type: object
+      required: [login, password]
+      properties:
+        login:
+          type: string
+          example: "ivan-petrov"
+        password:
+          type: string
+          example: "securePassword123"
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh-token, полученный при входе
+          example: "eyJhbGciOiJIUzI1NiIs..."
+
+    LogoutRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh-token для отзыва
+
+    AuthResponse:
+      type: object
+      required: [access_token, refresh_token, expires_in, user]
+      properties:
+        access_token:
+          type: string
+          description: JWT access-token
+          example: "eyJhbGciOiJIUzI1NiIs..."
+        refresh_token:
+          type: string
+          description: Refresh-token для обновления access-token
+          example: "dGhpcyBpcyBhIHJlZnJlc2g..."
+        expires_in:
+          type: integer
+          description: Время жизни access-token в секундах
+          example: 900
+        user:
+          $ref: '#/components/schemas/UserProfile'
+
+    # === Users ===
+
+    UserProfile:
+      type: object
+      required: [id, login, email, full_name, role, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        login:
+          type: string
+          example: "ivan-petrov"
+        email:
+          type: string
+          format: email
+          example: "ivan@example.com"
+        full_name:
+          type: string
+          example: "Петров Иван Сергеевич"
+        role:
+          type: string
+          enum: [coach, athlete]
+          example: "athlete"
+        created_at:
+          type: string
+          format: date-time
+          example: "2026-03-28T12:00:00Z"
+
+    AthleteInfo:
+      type: object
+      required: [id, login, full_name, connected_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        login:
+          type: string
+          example: "ivan-petrov"
+        full_name:
+          type: string
+          example: "Петров Иван Сергеевич"
+        connected_at:
+          type: string
+          format: date-time
+          description: Дата привязки
+
+    CoachInfo:
+      type: object
+      required: [id, login, full_name, connected_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        login:
+          type: string
+          example: "coach-maria"
+        full_name:
+          type: string
+          example: "Сидорова Мария Александровна"
+        connected_at:
+          type: string
+          format: date-time
+
+    # === Connections ===
+
+    ConnectionRequestCreate:
+      type: object
+      required: [coach_id]
+      properties:
+        coach_id:
+          type: string
+          format: uuid
+          description: ID тренера, которому отправляется заявка
+
+    ConnectionRequest:
+      type: object
+      required: [id, athlete, coach, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        athlete:
+          type: object
+          required: [id, login, full_name]
+          properties:
+            id:
+              type: string
+              format: uuid
+            login:
+              type: string
+            full_name:
+              type: string
+        coach:
+          type: object
+          required: [id, login, full_name]
+          properties:
+            id:
+              type: string
+              format: uuid
+            login:
+              type: string
+            full_name:
+              type: string
+        status:
+          type: string
+          enum: [pending, accepted, rejected]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # === Groups ===
+
+    CreateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Название группы
+          example: "Спринтеры U18"
+
+    UpdateGroupRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Спринтеры U20"
+
+    AddGroupMemberRequest:
+      type: object
+      required: [athlete_id]
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+          description: ID спортсмена для добавления в группу
+
+    TrainingGroup:
+      type: object
+      required: [id, name, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Спринтеры U18"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TrainingGroupSummary:
+      type: object
+      required: [id, name, members_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Спринтеры U18"
+        members_count:
+          type: integer
+          description: Количество спортсменов в группе
+          example: 8
+        created_at:
+          type: string
+          format: date-time
+
+    TrainingGroupDetail:
+      type: object
+      required: [id, name, members, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          example: "Спринтеры U18"
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroupMember'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    GroupMember:
+      type: object
+      required: [athlete_id, login, full_name, added_at]
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+        login:
+          type: string
+          example: "ivan-petrov"
+        full_name:
+          type: string
+          example: "Петров Иван Сергеевич"
+        added_at:
+          type: string
+          format: date-time
+
+    # === Training ===
+
+    CreateTrainingPlanRequest:
+      type: object
+      required: [title, description, scheduled_date]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Заголовок тренировки
+          example: "Развивающий кросс"
+        description:
+          type: string
+          minLength: 1
+          description: Подробное описание тренировки
+          example: "Кросс 8 км в аэробной зоне (пульс 140-155). Разминка 2 км трусцой, основная часть 5 км в темпе 4:30-4:45/км, заминка 1 км."
+        scheduled_date:
+          type: string
+          format: date
+          description: Дата тренировки (ГГГГ-ММ-ДД)
+          example: "2026-04-05"
+        athlete_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: |
+            Список ID спортсменов для назначения.
+            Должен быть указан хотя бы один из: athlete_ids или group_id.
+          example: ["550e8400-e29b-41d4-a716-446655440001", "550e8400-e29b-41d4-a716-446655440002"]
+        group_id:
+          type: string
+          format: uuid
+          description: |
+            ID группы. Задание будет назначено всем спортсменам в группе.
+            Должен быть указан хотя бы один из: athlete_ids или group_id.
+        template_id:
+          type: string
+          format: uuid
+          description: |
+            ID шаблона. Если указан, title и description берутся из шаблона
+            (но могут быть переопределены в запросе).
+        save_as_template:
+          type: boolean
+          default: false
+          description: Сохранить план как шаблон для будущего использования
+
+    CreateTrainingPlanResponse:
+      type: object
+      required: [plan, assignments]
+      properties:
+        plan:
+          type: object
+          required: [id, title, scheduled_date, created_at]
+          properties:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            scheduled_date:
+              type: string
+              format: date
+            created_at:
+              type: string
+              format: date-time
+        assignments:
+          type: array
+          description: Созданные назначения
+          items:
+            type: object
+            required: [id, athlete_id, athlete_full_name, athlete_login]
+            properties:
+              id:
+                type: string
+                format: uuid
+              athlete_id:
+                type: string
+                format: uuid
+              athlete_full_name:
+                type: string
+              athlete_login:
+                type: string
+        template:
+          description: Созданный шаблон (если save_as_template=true)
+          $ref: '#/components/schemas/TrainingTemplate'
+
+    AssignmentListItem:
+      type: object
+      required: [id, plan_id, title, scheduled_date, status, assigned_at, is_overdue]
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Развивающий кросс"
+        scheduled_date:
+          type: string
+          format: date
+          example: "2026-04-05"
+        status:
+          type: string
+          enum: [assigned, completed, archived]
+          example: "assigned"
+        is_overdue:
+          type: boolean
+          description: |
+            true если задание не выполнено и прошло более суток с scheduled_date.
+            Вычисляется динамически на сервере.
+          example: false
+        has_report:
+          type: boolean
+          description: Есть ли отчёт по этому заданию
+          example: false
+        assigned_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        # Поля видимые для тренера (кому выдано)
+        athlete_id:
+          type: string
+          format: uuid
+          description: Только для тренера
+        athlete_full_name:
+          type: string
+          description: Только для тренера
+          example: "Петров Иван Сергеевич"
+        athlete_login:
+          type: string
+          description: Только для тренера
+          example: "ivan-petrov"
+        # Поля видимые для спортсмена (кто выдал)
+        coach_full_name:
+          type: string
+          description: Только для спортсмена
+          example: "Сидорова Мария Александровна"
+        coach_login:
+          type: string
+          description: Только для спортсмена
+          example: "coach-maria"
+
+    AssignmentDetail:
+      type: object
+      required: [id, plan_id, title, description, scheduled_date, status, assigned_at, is_overdue]
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          description: Полное описание тренировки
+        scheduled_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [assigned, completed, archived]
+        is_overdue:
+          type: boolean
+        has_report:
+          type: boolean
+        assigned_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+        athlete_id:
+          type: string
+          format: uuid
+        athlete_full_name:
+          type: string
+        athlete_login:
+          type: string
+        coach_full_name:
+          type: string
+        coach_login:
+          type: string
+
+    # === Reports ===
+
+    CreateReportRequest:
+      type: object
+      required: [content, duration_minutes, perceived_effort]
+      properties:
+        content:
+          type: string
+          minLength: 1
+          description: Текстовый комментарий по тренировке
+          example: "Чувствовал себя хорошо. Первые 3 км бежал легко, после 5 км начал уставать. Средний темп 4:40/км."
+        duration_minutes:
+          type: integer
+          minimum: 1
+          maximum: 1440
+          description: Продолжительность тренировки в минутах
+          example: 45
+        perceived_effort:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: |
+            Субъективная оценка тяжести тренировки (RPE).
+            0 — очень легко, 10 — максимально тяжело.
+          example: 6
+        max_heart_rate:
+          type: integer
+          minimum: 30
+          maximum: 250
+          nullable: true
+          description: Максимальный пульс за тренировку (уд/мин)
+          example: 172
+        avg_heart_rate:
+          type: integer
+          minimum: 30
+          maximum: 250
+          nullable: true
+          description: Средний пульс за тренировку (уд/мин)
+          example: 148
+        distance_km:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Пройденная дистанция (км)
+          example: 8.2
+
+    TrainingReport:
+      type: object
+      required: [id, assignment_id, athlete_id, content, duration_minutes, perceived_effort, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        assignment_id:
+          type: string
+          format: uuid
+        athlete_id:
+          type: string
+          format: uuid
+        athlete_full_name:
+          type: string
+          example: "Петров Иван Сергеевич"
+        athlete_login:
+          type: string
+          example: "ivan-petrov"
+        content:
+          type: string
+        duration_minutes:
+          type: integer
+          example: 45
+        perceived_effort:
+          type: integer
+          example: 6
+        max_heart_rate:
+          type: integer
+          nullable: true
+          example: 172
+        avg_heart_rate:
+          type: integer
+          nullable: true
+          example: 148
+        distance_km:
+          type: number
+          format: double
+          nullable: true
+          example: 8.2
+        created_at:
+          type: string
+          format: date-time
+
+    # === Templates ===
+
+    CreateTemplateRequest:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "Развивающий кросс 8 км"
+        description:
+          type: string
+          minLength: 1
+          example: "Кросс 8 км в аэробной зоне (пульс 140-155)..."
+
+    UpdateTemplateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          minLength: 1
+
+    TrainingTemplate:
+      type: object
+      required: [id, title, description, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Развивающий кросс 8 км"
+        description:
+          type: string
+          example: "Кросс 8 км в аэробной зоне (пульс 140-155)..."
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    # === Notifications ===
+
+    Notification:
+      type: object
+      required: [id, type, title, is_read, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - connection_request
+            - connection_accepted
+            - connection_rejected
+            - training_assigned
+            - training_deleted
+            - report_submitted
+            - group_added
+            - group_removed
+          description: Тип уведомления
+          example: "training_assigned"
+        title:
+          type: string
+          description: Заголовок уведомления
+          example: "Новое задание от тренера"
+        body:
+          type: string
+          nullable: true
+          description: Текст уведомления
+          example: 'Тренер Сидорова М.А. назначил вам тренировку "Развивающий кросс" на 05.04.2026'
+        data:
+          type: object
+          nullable: true
+          description: |
+            Дополнительные данные для навигации в приложении.
+            Содержит ID связанного ресурса для перехода при нажатии.
+          properties:
+            assignment_id:
+              type: string
+              format: uuid
+            request_id:
+              type: string
+              format: uuid
+            group_id:
+              type: string
+              format: uuid
+          example:
+            assignment_id: "550e8400-e29b-41d4-a716-446655440099"
+        is_read:
+          type: boolean
+          example: false
+        created_at:
+          type: string
+          format: date-time
+
+    RegisterDeviceTokenRequest:
+      type: object
+      required: [fcm_token]
+      properties:
+        fcm_token:
+          type: string
+          description: Firebase Cloud Messaging token
+          example: "dGhpcyBpcyBhIGZjbSB0b2tlbg..."
+        device_info:
+          type: string
+          nullable: true
+          description: Информация об устройстве (модель, ОС)
+          example: "iPhone 15 Pro, iOS 18.0"
+
+    # === Common ===
+
+    Pagination:
+      type: object
+      required: [page, page_size, total_items, total_pages]
+      properties:
+        page:
+          type: integer
+          description: Текущая страница
+          example: 1
+        page_size:
+          type: integer
+          description: Размер страницы
+          example: 20
+        total_items:
+          type: integer
+          description: Общее количество элементов
+          example: 42
+        total_pages:
+          type: integer
+          description: Общее количество страниц
+          example: 3
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Машиночитаемый код ошибки.
+                Коды: VALIDATION_ERROR, LOGIN_ALREADY_EXISTS, INVALID_CREDENTIALS,
+                UNAUTHORIZED, FORBIDDEN, NOT_FOUND, ALREADY_HAS_COACH,
+                REQUEST_ALREADY_EXISTS, ALREADY_IN_GROUP, REPORT_ALREADY_EXISTS,
+                ASSIGNMENT_NOT_COMPLETED, INTERNAL_ERROR
+              example: "VALIDATION_ERROR"
+            message:
+              type: string
+              description: Человекочитаемое описание ошибки
+              example: "login must contain only latin letters, digits and hyphens"
+            details:
+              type: array
+              nullable: true
+              description: Детали ошибок валидации (для каждого поля)
+              items:
+                type: object
+                properties:
+                  field:
+                    type: string
+                    example: "login"
+                  message:
+                    type: string
+                    example: "must be at least 3 characters"
