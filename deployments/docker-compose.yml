@@ -157,6 +157,17 @@ services:
     depends_on:
       - api-gateway
 
+  integration-test:
+    build:
+      context: ../tests/integration
+      dockerfile: Dockerfile
+    environment:
+      BASE_URL: http://api-gateway:8080
+    depends_on:
+      - api-gateway
+    profiles:
+      - test
+
   swagger-ui:
     image: swaggerapi/swagger-ui
     environment:

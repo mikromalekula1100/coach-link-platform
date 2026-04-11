@@ -1,6 +1,6 @@
 COMPOSE = docker compose -f deployments/docker-compose.yml
 
-.PHONY: up down restart build logs clean ps test-e2e \
+.PHONY: up down restart build logs clean ps test-e2e test-integration \
         logs-auth logs-user logs-training logs-notification logs-gateway
 
 ## Start all services (build if needed)
@@ -57,3 +57,8 @@ swagger:
 ## Run E2E smoke test
 test-e2e:
 	@bash scripts/e2e-test.sh
+
+## Run integration tests (requires services to be up: make up)
+test-integration:
+	@echo "Running integration tests against the API gateway..."
+	$(COMPOSE) run --rm --build integration-test
