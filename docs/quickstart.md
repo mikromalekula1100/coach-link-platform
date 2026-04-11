@@ -4,6 +4,7 @@
 
 - Docker и Docker Compose
 - Make (обычно предустановлен на macOS/Linux)
+- **macOS:** [Colima](https://github.com/abiosoft/colima) (Docker-runtime для macOS на Apple Silicon)
 
 ## Команды
 
@@ -33,16 +34,19 @@
 git clone https://github.com/mikromalekula1100/coach-link-platform.git
 cd coach-link-platform
 
-# 2. Запустите платформу
+# 2. (macOS) Запустите Colima, если ещё не запущена
+colima start
+
+# 3. Запустите платформу
 make up
 
-# 3. Дождитесь запуска (10-30 секунд при первой сборке — дольше)
+# 4. Дождитесь запуска (10-30 секунд при первой сборке — дольше)
 make ps
 
-# 4. Откройте веб-интерфейс для тестирования
+# 5. Откройте веб-интерфейс для тестирования
 open http://localhost:3000
 
-# 5. Запустите интеграционные тесты (99 тестов, все эндпоинты)
+# 6. Запустите интеграционные тесты (110 тестов, все эндпоинты)
 make test-integration
 
 # Или быстрый smoke-тест (только happy path)
@@ -108,16 +112,27 @@ docker compose -f deployments/docker-compose.yml exec ollama ollama list
 
 **Ускорение на Apple Silicon (M1/M2/M3):** для использования GPU (Metal) установите Ollama нативно (`brew install ollama && ollama serve`) и укажите в docker-compose для ai-service переменную `OLLAMA_URL: http://host.docker.internal:11434`.
 
+## Остановка
+
+```bash
+make down           # остановить контейнеры (данные в volumes сохраняются)
+colima stop         # (macOS) остановить Docker VM — освободит ~12 ГБ RAM
+```
+
+Для повторного запуска:
+```bash
+colima start        # (macOS)
+make up
+```
+
 ## Полный сброс
 
 Если что-то пошло не так или нужно начать с чистого листа:
 
 ```bash
-make clean
+make clean          # остановить контейнеры и удалить volumes (все данные!)
 make up
 ```
-
-Это удалит все данные из баз данных и пересоздаст контейнеры.
 
 ## API документация
 
