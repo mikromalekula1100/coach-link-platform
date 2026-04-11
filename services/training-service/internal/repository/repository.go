@@ -477,3 +477,118 @@ func (r *Repository) DeleteTemplate(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM training_templates WHERE id = $1`, id)
 	return err
 }
+
+// ──────────────────────────────────────────────
+// Internal API queries
+// ──────────────────────────────────────────────
+
+func (r *Repository) GetReportsByAthleteID(ctx context.Context, athleteID, dateFrom, dateTo string) ([]model.ReportWithPlan, error) {
+	var conditions []string
+	var args []interface{}
+	argIdx := 1
+
+	conditions = append(conditions, fmt.Sprintf("tr.athlete_id = $%d", argIdx))
+	args = append(args, athleteID)
+	argIdx++
+
+	if dateFrom != "" {
+		conditions = append(conditions, fmt.Sprintf("p.scheduled_date >= $%d", argIdx))
+		args = append(args, dateFrom)
+		argIdx++
+	}
+	if dateTo != "" {
+		conditions = append(conditions, fmt.Sprintf("p.scheduled_date <= $%d", argIdx))
+		args = append(args, dateTo)
+		argIdx++
+	}
+
+	where := strings.Join(conditions, " AND ")
+
+	query := fmt.Sprintf(`
+		SELECT
+			tr.id, tr.assignment_id, tr.athlete_id, tr.content,
+			tr.duration_minutes, tr.perceived_effort,
+			tr.max_heart_rate, tr.avg_heart_rate, tr.distance_km,
+			tr.created_at,
+			p.title, p.scheduled_date
+		FROM training_reports tr
+		JOIN training_assignments a ON a.id = tr.assignment_id
+		JOIN training_plans p ON p.id = a.plan_id
+		WHERE %s
+		ORDER BY p.scheduled_date DESC`, where)
+
+	var reports []model.ReportWithPlan
+	if err := r.db.SelectContext(ctx, &reports, query, args...); err != nil {
+		return nil, err
+	}
+	return reports, nil
+}
+
+func (r *Repository) GetAthleteStats(ctx context.Context, athleteID string) (*model.AthleteStats, error) {
+	var stats model.AthleteStats
+
+	// Report aggregates
+	reportQuery := `
+		SELECT
+			COUNT(*) AS total_reports,
+			COALESCE(SUM(duration_minutes), 0) AS total_duration_minutes,
+			COALESCE(AVG(duration_minutes), 0) AS avg_duration_minutes,
+			COALESCE(AVG(perceived_effort), 0) AS avg_perceived_effort,
+			COALESCE(AVG(avg_heart_rate) FILTER (WHERE avg_heart_rate IS NOT NULL), 0) AS avg_heart_rate,
+			MAX(max_heart_rate) AS max_heart_rate_ever,
+			COALESCE(SUM(distance_km), 0) AS total_distance_km
+		FROM training_reports
+		WHERE athlete_id = $1`
+	if err := r.db.GetContext(ctx, &stats, reportQuery, athleteID); err != nil {
+		return nil, err
+	}
+
+	// Assignment counts
+	assignmentQuery := `
+		SELECT
+			COUNT(*) AS total_assignments,
+			COUNT(*) FILTER (WHERE status IN ('completed', 'archived')) AS completed_count
+		FROM training_assignments
+		WHERE athlete_id = $1`
+	if err := r.db.GetContext(ctx, &stats, assignmentQuery, athleteID); err != nil {
+		return nil, err
+	}
+
+	if stats.TotalAssignments > 0 {
+		stats.CompletionRate = float64(stats.CompletedCount) / float64(stats.TotalAssignments)
+	}
+
+	return &stats, nil
+}
+
+func (r *Repository) GetCoachAthleteIDs(ctx context.Context, coachID string) ([]string, error) {
+	var ids []string
+	query := `SELECT DISTINCT athlete_id FROM training_assignments WHERE coach_id = $1`
+	if err := r.db.SelectContext(ctx, &ids, query, coachID); err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+func (r *Repository) GetCoachOverviewStats(ctx context.Context, coachID string) (*model.CoachOverviewStats, error) {
+	var stats model.CoachOverviewStats
+
+	query := `
+		SELECT
+			COUNT(DISTINCT a.athlete_id) AS total_athletes,
+			COUNT(DISTINCT a.id) AS total_assignments,
+			COUNT(DISTINCT tr.id) AS total_reports
+		FROM training_assignments a
+		LEFT JOIN training_reports tr ON tr.assignment_id = a.id
+		WHERE a.coach_id = $1`
+
+	if err := r.db.QueryRowxContext(ctx, query, coachID).Scan(
+		&stats.TotalAthletes,
+		&stats.TotalAssignments,
+		&stats.TotalReports,
+	); err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
+}

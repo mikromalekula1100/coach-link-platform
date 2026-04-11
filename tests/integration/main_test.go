@@ -304,6 +304,23 @@ func TestIntegration(t *testing.T) {
 		t.Run("DeviceToken_Success", testNotificationDeviceTokenSuccess)
 		t.Run("DeviceToken_Empty", testNotificationDeviceTokenEmpty)
 	})
+
+	t.Run("Analytics", func(t *testing.T) {
+		t.Run("Me_Summary", testAnalyticsMeSummary)
+		t.Run("Me_Progress", testAnalyticsMeProgress)
+		t.Run("Athlete_Summary_AsCoach", testAnalyticsAthleteSummaryAsCoach)
+		t.Run("Athlete_Progress_AsCoach", testAnalyticsAthleteProgressAsCoach)
+		t.Run("Overview", testAnalyticsOverview)
+		t.Run("Overview_AsAthlete", testAnalyticsOverviewAsAthlete)
+		t.Run("NoAuth", testAnalyticsNoAuth)
+	})
+
+	t.Run("AI", func(t *testing.T) {
+		t.Run("Recommendations_AsCoach", testAIRecommendationsAsCoach)
+		t.Run("Analysis_AsCoach", testAIAnalysisAsCoach)
+		t.Run("Recommendations_AsAthlete", testAIRecommendationsAsAthlete)
+		t.Run("Recommendations_NoAuth", testAIRecommendationsNoAuth)
+	})
 }
 
 // requireStatus is a helper that checks HTTP status and prints body on failure.

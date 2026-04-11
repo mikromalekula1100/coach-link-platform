@@ -492,6 +492,26 @@ func (s *Service) DeleteTemplate(ctx context.Context, coachID, templateID string
 }
 
 // ──────────────────────────────────────────────
+// Internal API
+// ──────────────────────────────────────────────
+
+func (s *Service) GetReportsByAthleteID(ctx context.Context, athleteID, dateFrom, dateTo string) ([]model.ReportWithPlan, error) {
+	return s.repo.GetReportsByAthleteID(ctx, athleteID, dateFrom, dateTo)
+}
+
+func (s *Service) GetAthleteStats(ctx context.Context, athleteID string) (*model.AthleteStats, error) {
+	return s.repo.GetAthleteStats(ctx, athleteID)
+}
+
+func (s *Service) GetCoachAthleteIDs(ctx context.Context, coachID string) ([]string, error) {
+	return s.repo.GetCoachAthleteIDs(ctx, coachID)
+}
+
+func (s *Service) GetCoachOverviewStats(ctx context.Context, coachID string) (*model.CoachOverviewStats, error) {
+	return s.repo.GetCoachOverviewStats(ctx, coachID)
+}
+
+// ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
 

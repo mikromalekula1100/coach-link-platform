@@ -129,6 +129,44 @@ services:
       nats:
         condition: service_healthy
 
+  analytics-service:
+    build:
+      context: ..
+      dockerfile: services/analytics-service/Dockerfile
+    environment:
+      APP_PORT: "8005"
+      TRAINING_SERVICE_URL: http://training-service:8003
+    ports:
+      - "8005:8005"
+    depends_on:
+      - training-service
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: services/ai-service/Dockerfile
+    environment:
+      APP_PORT: "8006"
+      ANALYTICS_SERVICE_URL: http://analytics-service:8005
+      TRAINING_SERVICE_URL: http://training-service:8003
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:4b
+    ports:
+      - "8006:8006"
+    depends_on:
+      - analytics-service
+
+  ollama:
+    build:
+      context: ..
+      dockerfile: services/ollama/Dockerfile
+    environment:
+      OLLAMA_MODEL: gemma3:4b
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
   api-gateway:
     build:
       context: ..
@@ -139,6 +177,8 @@ services:
       USER_SERVICE_URL: http://user-service:8002
       TRAINING_SERVICE_URL: http://training-service:8003
       NOTIFICATION_SERVICE_URL: http://notification-service:8004
+      ANALYTICS_SERVICE_URL: http://analytics-service:8005
+      AI_SERVICE_URL: http://ai-service:8006
       JWT_SECRET: coachlink-jwt-secret-change-in-production
     ports:
       - "8080:8080"
@@ -147,6 +187,8 @@ services:
       - user-service
       - training-service
       - notification-service
+      - analytics-service
+      - ai-service
 
   web:
     build:
@@ -180,3 +222,4 @@ services:
 volumes:
   postgres_data:
   nats_data:
+  ollama_data:

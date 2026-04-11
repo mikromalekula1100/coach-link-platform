@@ -12,6 +12,8 @@ type Config struct {
 	UserServiceURL         string
 	TrainingServiceURL     string
 	NotificationServiceURL string
+	AnalyticsServiceURL    string
+	AIServiceURL           string
 	JWTSecret              string
 }
 
@@ -23,6 +25,8 @@ func Load() (*Config, error) {
 		UserServiceURL:         getEnv("USER_SERVICE_URL", "http://localhost:8002"),
 		TrainingServiceURL:     getEnv("TRAINING_SERVICE_URL", "http://localhost:8003"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8004"),
+		AnalyticsServiceURL:    getEnv("ANALYTICS_SERVICE_URL", "http://localhost:8005"),
+		AIServiceURL:           getEnv("AI_SERVICE_URL", "http://localhost:8006"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 	}
 

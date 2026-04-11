@@ -218,6 +218,44 @@ type PaginatedResponse struct {
 }
 
 // ──────────────────────────────────────────────
+// Internal API response types
+// ──────────────────────────────────────────────
+
+type ReportWithPlan struct {
+	ID              string    `json:"id" db:"id"`
+	AssignmentID    string    `json:"assignment_id" db:"assignment_id"`
+	AthleteID       string    `json:"athlete_id" db:"athlete_id"`
+	Content         string    `json:"content" db:"content"`
+	DurationMinutes int       `json:"duration_minutes" db:"duration_minutes"`
+	PerceivedEffort int       `json:"perceived_effort" db:"perceived_effort"`
+	MaxHeartRate    *int      `json:"max_heart_rate,omitempty" db:"max_heart_rate"`
+	AvgHeartRate    *int      `json:"avg_heart_rate,omitempty" db:"avg_heart_rate"`
+	DistanceKm      *float64  `json:"distance_km,omitempty" db:"distance_km"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	Title           string    `json:"title" db:"title"`
+	ScheduledDate   time.Time `json:"scheduled_date" db:"scheduled_date"`
+}
+
+type AthleteStats struct {
+	TotalReports       int     `json:"total_reports" db:"total_reports"`
+	TotalDurationMin   int     `json:"total_duration_minutes" db:"total_duration_minutes"`
+	AvgDurationMin     float64 `json:"avg_duration_minutes" db:"avg_duration_minutes"`
+	AvgPerceivedEffort float64 `json:"avg_perceived_effort" db:"avg_perceived_effort"`
+	AvgHeartRate       float64 `json:"avg_heart_rate" db:"avg_heart_rate"`
+	MaxHeartRateEver   *int    `json:"max_heart_rate_ever" db:"max_heart_rate_ever"`
+	TotalDistanceKm    float64 `json:"total_distance_km" db:"total_distance_km"`
+	TotalAssignments   int     `json:"total_assignments" db:"total_assignments"`
+	CompletedCount     int     `json:"completed_count" db:"completed_count"`
+	CompletionRate     float64 `json:"completion_rate"`
+}
+
+type CoachOverviewStats struct {
+	TotalAthletes    int `json:"total_athletes"`
+	TotalAssignments int `json:"total_assignments" db:"total_assignments"`
+	TotalReports     int `json:"total_reports" db:"total_reports"`
+}
+
+// ──────────────────────────────────────────────
 // Error response
 // ──────────────────────────────────────────────
 

@@ -19,6 +19,8 @@ type Router struct {
 	userProxy         *httputil.ReverseProxy
 	trainingProxy     *httputil.ReverseProxy
 	notificationProxy *httputil.ReverseProxy
+	analyticsProxy    *httputil.ReverseProxy
+	aiProxy           *httputil.ReverseProxy
 }
 
 // NewRouter parses the upstream URLs from config and creates a Router with
@@ -40,12 +42,22 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 	if err != nil {
 		return nil, err
 	}
+	analyticsURL, err := url.Parse(cfg.AnalyticsServiceURL)
+	if err != nil {
+		return nil, err
+	}
+	aiURL, err := url.Parse(cfg.AIServiceURL)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Router{
 		authProxy:         newProxy(authURL),
 		userProxy:         newProxy(userURL),
 		trainingProxy:     newProxy(trainingURL),
 		notificationProxy: newProxy(notificationURL),
+		analyticsProxy:    newProxy(analyticsURL),
+		aiProxy:           newProxy(aiURL),
 	}, nil
 }
 
@@ -70,6 +82,12 @@ func (r *Router) RegisterRoutes(e *echo.Echo) {
 	// Notification service routes.
 	e.Any("/api/v1/notifications", r.proxyHandler(r.notificationProxy))
 	e.Any("/api/v1/notifications/*", r.proxyHandler(r.notificationProxy))
+
+	// Analytics service routes.
+	e.Any("/api/v1/analytics/*", r.proxyHandler(r.analyticsProxy))
+
+	// AI service routes.
+	e.Any("/api/v1/ai/*", r.proxyHandler(r.aiProxy))
 }
 
 // healthCheck responds to liveness probes.

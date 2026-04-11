@@ -65,6 +65,12 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 	api.GET("/templates/:templateId", h.GetTemplate)
 	api.PUT("/templates/:templateId", h.UpdateTemplate)
 	api.DELETE("/templates/:templateId", h.DeleteTemplate)
+
+	// Internal API (no auth required, called by other services)
+	e.GET("/internal/reports", h.InternalGetReports)
+	e.GET("/internal/athletes/:athleteId/stats", h.InternalGetAthleteStats)
+	e.GET("/internal/coach/:coachId/athletes", h.InternalGetCoachAthleteIDs)
+	e.GET("/internal/coach/:coachId/overview", h.InternalGetCoachOverview)
 }
 
 // ──────────────────────────────────────────────
@@ -452,6 +458,62 @@ func (h *Handler) DeleteTemplate(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusNoContent)
+}
+
+// ──────────────────────────────────────────────
+// Internal API
+// ──────────────────────────────────────────────
+
+func (h *Handler) InternalGetReports(c echo.Context) error {
+	athleteID := c.QueryParam("athlete_id")
+	if athleteID == "" {
+		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "athlete_id query parameter is required"},
+		})
+	}
+
+	dateFrom := c.QueryParam("date_from")
+	dateTo := c.QueryParam("date_to")
+
+	reports, err := h.svc.GetReportsByAthleteID(c.Request().Context(), athleteID, dateFrom, dateTo)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, reports)
+}
+
+func (h *Handler) InternalGetAthleteStats(c echo.Context) error {
+	athleteID := c.Param("athleteId")
+
+	stats, err := h.svc.GetAthleteStats(c.Request().Context(), athleteID)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, stats)
+}
+
+func (h *Handler) InternalGetCoachAthleteIDs(c echo.Context) error {
+	coachID := c.Param("coachId")
+
+	ids, err := h.svc.GetCoachAthleteIDs(c.Request().Context(), coachID)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, ids)
+}
+
+func (h *Handler) InternalGetCoachOverview(c echo.Context) error {
+	coachID := c.Param("coachId")
+
+	stats, err := h.svc.GetCoachOverviewStats(c.Request().Context(), coachID)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, stats)
 }
 
 // ──────────────────────────────────────────────
