@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,7 +15,11 @@ import (
 // We test API contract (auth, validation) and accept 503 as valid for AI generation.
 
 func testAIRecommendationsAsCoach(t *testing.T) {
-	status, data, err := client.Post(
+	// AI generation on CPU can take minutes — use a dedicated client with longer timeout
+	aiClient := NewAPIClient(getBaseURL())
+	aiClient.httpClient.Timeout = 6 * time.Minute
+
+	status, data, err := aiClient.Post(
 		fmt.Sprintf("/api/v1/ai/athletes/%s/recommendations", athlete1ID),
 		map[string]string{
 			"context": "Подготовка к соревнованиям на 800м через 2 месяца",
@@ -37,7 +42,10 @@ func testAIRecommendationsAsCoach(t *testing.T) {
 }
 
 func testAIAnalysisAsCoach(t *testing.T) {
-	status, data, err := client.Post(
+	aiClient := NewAPIClient(getBaseURL())
+	aiClient.httpClient.Timeout = 6 * time.Minute
+
+	status, data, err := aiClient.Post(
 		fmt.Sprintf("/api/v1/ai/athletes/%s/analysis", athlete1ID),
 		nil,
 		coach1Token,

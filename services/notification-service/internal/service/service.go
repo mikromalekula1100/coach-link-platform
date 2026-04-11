@@ -8,6 +8,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/coach-link/platform/services/notification-service/internal/model"
+	"github.com/coach-link/platform/services/notification-service/internal/pusher"
 	"github.com/coach-link/platform/services/notification-service/internal/repository"
 )
 
@@ -44,12 +45,13 @@ func IsServiceError(err error) (*ServiceError, bool) {
 // ──────────────────────────────────────────────
 
 type Service struct {
-	repo *repository.Repository
-	log  zerolog.Logger
+	repo   *repository.Repository
+	fcm    *pusher.FCMPusher
+	log    zerolog.Logger
 }
 
-func New(repo *repository.Repository, log zerolog.Logger) *Service {
-	return &Service{repo: repo, log: log}
+func New(repo *repository.Repository, fcm *pusher.FCMPusher, log zerolog.Logger) *Service {
+	return &Service{repo: repo, fcm: fcm, log: log}
 }
 
 // CreateNotificationFromEvent creates a notification in the database from an event payload.
@@ -90,6 +92,27 @@ func (s *Service) CreateNotificationFromEvent(ctx context.Context, userID, nType
 		Str("user_id", userID).
 		Str("type", nType).
 		Msg("notification created")
+
+	// Send FCM push in background (best-effort, don't block)
+	if s.fcm != nil && s.fcm.Enabled() {
+		go func() {
+			pushCtx := context.Background()
+			tokens, err := s.repo.GetDeviceTokensByUserID(pushCtx, userID)
+			if err != nil {
+				s.log.Error().Err(err).Str("user_id", userID).Msg("failed to fetch device tokens for FCM")
+				return
+			}
+			if len(tokens) == 0 {
+				return
+			}
+			pushData := map[string]string{"type": nType, "notification_id": n.ID}
+			bodyStr := ""
+			if bodyPtr != nil {
+				bodyStr = *bodyPtr
+			}
+			s.fcm.Send(pushCtx, tokens, title, bodyStr, pushData)
+		}()
+	}
 
 	return nil
 }

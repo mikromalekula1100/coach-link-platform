@@ -134,6 +134,16 @@ func (r *Repository) UpsertDeviceToken(ctx context.Context, userID, fcmToken, de
 	return err
 }
 
+// GetDeviceTokensByUserID returns all FCM tokens registered for the given user.
+func (r *Repository) GetDeviceTokensByUserID(ctx context.Context, userID string) ([]string, error) {
+	const q = `SELECT fcm_token FROM device_tokens WHERE user_id = $1`
+	var tokens []string
+	if err := r.db.SelectContext(ctx, &tokens, q, userID); err != nil {
+		return nil, err
+	}
+	return tokens, nil
+}
+
 // ──────────────────────────────────────────────
 // Sentinel errors
 // ──────────────────────────────────────────────

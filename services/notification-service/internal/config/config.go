@@ -13,7 +13,8 @@ type Config struct {
 	DBPass    string
 	DBName    string
 	DBSSLMode string
-	NATSURL   string
+	NATSURL              string
+	FirebaseCredentials  string
 }
 
 func Load() *Config {
@@ -25,7 +26,8 @@ func Load() *Config {
 		DBPass:    getEnv("DB_PASSWORD", "secret"),
 		DBName:    getEnv("DB_NAME", "notification_db"),
 		DBSSLMode: getEnv("DB_SSLMODE", "disable"),
-		NATSURL:   getEnv("NATS_URL", "nats://localhost:4222"),
+		NATSURL:              getEnv("NATS_URL", "nats://localhost:4222"),
+		FirebaseCredentials:  os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
 	}
 }
 

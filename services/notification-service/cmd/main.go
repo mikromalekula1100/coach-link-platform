@@ -22,6 +22,7 @@ import (
 	"github.com/coach-link/platform/services/notification-service/internal/config"
 	"github.com/coach-link/platform/services/notification-service/internal/consumer"
 	"github.com/coach-link/platform/services/notification-service/internal/handler"
+	"github.com/coach-link/platform/services/notification-service/internal/pusher"
 	"github.com/coach-link/platform/services/notification-service/internal/repository"
 	"github.com/coach-link/platform/services/notification-service/internal/service"
 	"github.com/coach-link/platform/services/notification-service/migrations"
@@ -56,9 +57,15 @@ func main() {
 	}
 	defer nc.Close()
 
+	// ── FCM Pusher ─────────────────────────────
+	fcm, err := pusher.NewFCMPusher(context.Background(), cfg.FirebaseCredentials, logger)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to initialize FCM pusher")
+	}
+
 	// ── Layers ─────────────────────────────────
 	repo := repository.New(db)
-	svc := service.New(repo, logger)
+	svc := service.New(repo, fcm, logger)
 	h := handler.New(svc)
 
 	// ── NATS Consumers ─────────────────────────

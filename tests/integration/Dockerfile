@@ -7,4 +7,4 @@ RUN go mod download
 
 COPY . .
 
-ENTRYPOINT ["go", "test", "-v", "-count=1", "-timeout", "120s", "./..."]
+ENTRYPOINT ["go", "test", "-v", "-count=1", "-timeout", "15m", "./..."]

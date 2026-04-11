@@ -121,6 +121,9 @@ services:
       DB_PASSWORD: secret
       DB_SSLMODE: disable
       NATS_URL: nats://nats:4222
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/firebase-credentials.json
+    volumes:
+      - ./secrets/firebase-credentials.json:/secrets/firebase-credentials.json:ro
     ports:
       - "8004:8004"
     depends_on:
