@@ -47,6 +47,7 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 
 	// Plans
 	api.POST("/plans", h.CreatePlan)
+	api.GET("/groups/:groupId/plans", h.GetGroupPlans)
 
 	// Assignments
 	api.GET("/assignments", h.GetAssignments)
@@ -110,6 +111,55 @@ func (h *Handler) CreatePlan(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, resp)
+}
+
+func (h *Handler) GetGroupPlans(c echo.Context) error {
+	userID, role, err := extractUser(c)
+	if err != nil {
+		return err
+	}
+	if role != "coach" {
+		return c.JSON(http.StatusForbidden, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "FORBIDDEN", Message: "Only coaches can view group plans"},
+		})
+	}
+
+	groupID := c.Param("groupId")
+	if groupID == "" {
+		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "groupId is required"},
+		})
+	}
+
+	activeOnly := true
+	if c.QueryParam("active") == "false" {
+		activeOnly = false
+	}
+
+	page, pageSize := parsePagination(c, 1, 20)
+
+	rows, total, svcErr := h.svc.GetGroupPlans(c.Request().Context(), userID, groupID, activeOnly, page, pageSize)
+	if svcErr != nil {
+		return handleError(c, svcErr)
+	}
+
+	items := make([]model.GroupPlanListItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, model.GroupPlanListItem{
+			ID:              r.ID,
+			Title:           r.Title,
+			Description:     r.Description,
+			ScheduledDate:   r.ScheduledDate.Format("2006-01-02"),
+			CreatedAt:       r.CreatedAt.Format(time.RFC3339),
+			GroupID:         r.GroupID,
+			AssignmentCount: r.AssignmentCount,
+		})
+	}
+
+	return c.JSON(http.StatusOK, model.PaginatedResponse{
+		Items:      items,
+		Pagination: buildPagination(page, pageSize, total),
+	})
 }
 
 // ──────────────────────────────────────────────

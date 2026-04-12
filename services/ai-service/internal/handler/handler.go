@@ -22,6 +22,7 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 	api := e.Group("/api/v1/ai")
 	api.POST("/athletes/:athleteId/recommendations", h.GetRecommendations)
 	api.POST("/athletes/:athleteId/analysis", h.GetAnalysis)
+	api.POST("/coach/summary", h.GetCoachSummary)
 }
 
 // ──────────────────────────────────────────────
@@ -72,6 +73,24 @@ func (h *Handler) GetAnalysis(c echo.Context) error {
 	resp, err := h.svc.GenerateAnalysis(c.Request().Context(), athleteID, req.Context)
 	if err != nil {
 		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, resp)
+}
+
+// GetCoachSummary generates a digest of all athletes' reports for the coach.
+func (h *Handler) GetCoachSummary(c echo.Context) error {
+	coachID, err := extractCoach(c)
+	if err != nil {
+		return err
+	}
+
+	var req model.SummaryRequest
+	_ = c.Bind(&req)
+
+	resp, svcErr := h.svc.GenerateSummary(c.Request().Context(), coachID, req)
+	if svcErr != nil {
+		return handleError(c, svcErr)
 	}
 
 	return c.JSON(http.StatusOK, resp)

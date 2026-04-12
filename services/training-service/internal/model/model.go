@@ -12,6 +12,7 @@ type TrainingPlan struct {
 	Title         string    `db:"title"`
 	Description   string    `db:"description"`
 	ScheduledDate time.Time `db:"scheduled_date"`
+	GroupID       *string   `db:"group_id"`
 	CreatedAt     time.Time `db:"created_at"`
 }
 
@@ -130,10 +131,11 @@ type CreateTrainingPlanResponse struct {
 }
 
 type PlanResponse struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	ScheduledDate string `json:"scheduled_date"`
-	CreatedAt     string `json:"created_at"`
+	ID            string  `json:"id"`
+	Title         string  `json:"title"`
+	ScheduledDate string  `json:"scheduled_date"`
+	CreatedAt     string  `json:"created_at"`
+	GroupID       *string `json:"group_id,omitempty"`
 }
 
 type AssignmentBriefResponse struct {
@@ -201,6 +203,27 @@ type TrainingTemplateResponse struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
+// GroupPlanRow is a flat struct returned by the GetGroupPlans repository query.
+type GroupPlanRow struct {
+	ID              string    `db:"id"`
+	Title           string    `db:"title"`
+	Description     string    `db:"description"`
+	ScheduledDate   time.Time `db:"scheduled_date"`
+	CreatedAt       time.Time `db:"created_at"`
+	GroupID         string    `db:"group_id"`
+	AssignmentCount int       `db:"assignment_count"`
+}
+
+type GroupPlanListItem struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Description     string `json:"description"`
+	ScheduledDate   string `json:"scheduled_date"`
+	CreatedAt       string `json:"created_at"`
+	GroupID         string `json:"group_id"`
+	AssignmentCount int    `json:"assignment_count"`
+}
+
 // ──────────────────────────────────────────────
 // Pagination
 // ──────────────────────────────────────────────
@@ -234,6 +257,8 @@ type ReportWithPlan struct {
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	Title           string    `json:"title" db:"title"`
 	ScheduledDate   time.Time `json:"scheduled_date" db:"scheduled_date"`
+	AthleteFullName string    `json:"athlete_full_name" db:"athlete_full_name"`
+	AthleteLogin    string    `json:"athlete_login" db:"athlete_login"`
 }
 
 type AthleteStats struct {

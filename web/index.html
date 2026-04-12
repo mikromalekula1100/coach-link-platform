@@ -229,9 +229,14 @@ tr.overdue:hover { background: #ffcdd2 !important; }
 /* AI response */
 .ai-response {
   background: #f8f9fa; border: 1px solid #e0e0e0; border-radius: 6px;
-  padding: 20px; margin-top: 16px; white-space: pre-wrap; line-height: 1.6;
-  font-size: 14px;
+  padding: 20px; margin-top: 16px; line-height: 1.6;
+  font-size: 14px; overflow-wrap: break-word;
 }
+.ai-response h1, .ai-response h2, .ai-response h3 { margin: 12px 0 6px; }
+.ai-response h1 { font-size: 18px; } .ai-response h2 { font-size: 16px; } .ai-response h3 { font-size: 15px; }
+.ai-response ul, .ai-response ol { margin: 6px 0; padding-left: 24px; }
+.ai-response li { margin-bottom: 4px; }
+.ai-response p { margin: 8px 0; }
 .ai-response-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; color: #666; font-size: 12px; }
 
 /* Spinner */
@@ -281,10 +286,19 @@ const API = {
       } else {
         body = await resp.text();
       }
+      if (resp.status === 401) {
+        App.logout();
+        throw new Error('Сессия истекла, войдите заново');
+      }
       if (!resp.ok) {
-        const msg = (body && typeof body === 'object' && (body.error || body.message || body.detail))
-          ? (body.error || body.message || body.detail)
-          : ('Ошибка ' + resp.status);
+        var msg = 'Ошибка ' + resp.status;
+        if (body && typeof body === 'object') {
+          if (body.error && typeof body.error === 'object') {
+            msg = body.error.message || body.error.code || msg;
+          } else {
+            msg = body.error || body.message || body.detail || msg;
+          }
+        }
         throw new Error(msg);
       }
       return body;
@@ -353,6 +367,42 @@ function formatDateTime(d) {
 
 function qs(sel, ctx) { return (ctx || document).querySelector(sel); }
 function qsa(sel, ctx) { return (ctx || document).querySelectorAll(sel); }
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  var lines = text.split('\n');
+  var html = '';
+  var inUl = false, inOl = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    // Headings
+    if (/^### (.+)/.test(line)) { if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; } html += '<h3>' + escHtml(line.replace(/^### /, '')) + '</h3>'; continue; }
+    if (/^## (.+)/.test(line)) { if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; } html += '<h2>' + escHtml(line.replace(/^## /, '')) + '</h2>'; continue; }
+    if (/^# (.+)/.test(line)) { if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; } html += '<h1>' + escHtml(line.replace(/^# /, '')) + '</h1>'; continue; }
+    // Unordered list
+    if (/^[\-\*] (.+)/.test(line)) { if (inOl) { html += '</ol>'; inOl = false; } if (!inUl) { html += '<ul>'; inUl = true; } html += '<li>' + inlineMarkdown(line.replace(/^[\-\*] /, '')) + '</li>'; continue; }
+    // Ordered list
+    if (/^\d+\. (.+)/.test(line)) { if (inUl) { html += '</ul>'; inUl = false; } if (!inOl) { html += '<ol>'; inOl = true; } html += '<li>' + inlineMarkdown(line.replace(/^\d+\. /, '')) + '</li>'; continue; }
+    // Close lists
+    if (inUl) { html += '</ul>'; inUl = false; }
+    if (inOl) { html += '</ol>'; inOl = false; }
+    // Empty line = paragraph break
+    if (line.trim() === '') { html += '<br>'; continue; }
+    // Regular line
+    html += '<p>' + inlineMarkdown(line) + '</p>';
+  }
+  if (inUl) html += '</ul>';
+  if (inOl) html += '</ol>';
+  return html;
+}
+
+function inlineMarkdown(text) {
+  var s = escHtml(text);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  s = s.replace(/`(.+?)`/g, '<code>$1</code>');
+  return s;
+}
 
 // ==================== App State ====================
 const App = {
@@ -773,7 +823,10 @@ async function renderCoachGroupDetail(groupId) {
         '<a href="#coach-groups" class="btn btn-secondary btn-sm">&larr; Назад</a>' +
         '<h2>' + escHtml(g.name) + '</h2>' +
       '</div>' +
-      '<div class="mb-12"><button class="btn btn-primary btn-sm" onclick="showAddMemberModal(\'' + groupId + '\')">Добавить спортсмена</button></div>' +
+      '<div class="mb-12">' +
+        '<button class="btn btn-primary btn-sm" onclick="showAddMemberModal(\'' + groupId + '\')">Добавить спортсмена</button> ' +
+        '<button class="btn btn-success btn-sm" onclick="showGroupPlans(\'' + groupId + '\')">Планы группы</button>' +
+      '</div>' +
       '<div id="group-members">';
 
     if (members.length === 0) {
@@ -839,7 +892,7 @@ function showAddMemberModal(groupId) {
 
 async function addGroupMember(groupId, userId) {
   try {
-    await API.post('/groups/' + groupId + '/members', { user_id: userId });
+    await API.post('/groups/' + groupId + '/members', { athlete_id: userId });
     showToast('Спортсмен добавлен в группу', 'success');
     closeModal();
     renderCoachGroupDetail(groupId);
@@ -853,6 +906,45 @@ async function removeGroupMember(groupId, memberId) {
     showToast('Спортсмен удалён из группы', 'success');
     renderCoachGroupDetail(groupId);
   } catch(err) { showToast(err.message, 'error'); }
+}
+
+async function showGroupPlans(groupId) {
+  showModal('Планы группы', '<div class="loading-block"><div class="spinner"></div>Загрузка...</div>');
+
+  try {
+    var data = await API.get('/training/groups/' + groupId + '/plans');
+    var items = Array.isArray(data) ? data : (data.items || []);
+    var body = document.getElementById('modal-body');
+
+    if (items.length === 0) {
+      body.innerHTML = '<div class="empty-state">Нет активных планов для этой группы</div>';
+      return;
+    }
+
+    window._groupPlans = items;
+
+    var h = '<table><thead><tr><th>Название</th><th>Дата</th><th>Спортсменов</th><th>Действия</th></tr></thead><tbody>';
+    for (var i = 0; i < items.length; i++) {
+      var p = items[i];
+      h +=
+        '<tr>' +
+          '<td>' + escHtml(p.title || '') + '</td>' +
+          '<td>' + formatDate(p.scheduled_date) + '</td>' +
+          '<td>' + (p.assignment_count || 0) + '</td>' +
+          '<td><button class="btn btn-secondary btn-sm" onclick="showGroupPlanDescription(' + i + ')">Описание</button></td>' +
+        '</tr>';
+    }
+    h += '</tbody></table>';
+    body.innerHTML = h;
+  } catch(err) {
+    document.getElementById('modal-body').innerHTML =
+      '<div class="empty-state">Ошибка: ' + escHtml(err.message) + '</div>';
+  }
+}
+
+function showGroupPlanDescription(index) {
+  var p = window._groupPlans[index];
+  showModal(p.title || 'План', '<p style="white-space:pre-wrap">' + escHtml(p.description || 'Описание отсутствует') + '</p>');
 }
 
 // ==================== COACH: Create Plan ====================
@@ -1282,12 +1374,12 @@ async function sendConnectionRequest(coachId) {
 async function renderAthleteMyCoach() {
   var c = document.getElementById('content');
   c.innerHTML = '<h2>Мой тренер</h2><div id="coach-info"><div class="empty-state">Загрузка...</div></div>';
+  var el = document.getElementById('coach-info');
 
   try {
     var data = await API.get('/connections/coach');
-    var el = document.getElementById('coach-info');
     if (!data || (!data.id && !data.coach_id)) {
-      el.innerHTML = '<div class="empty-state">Вы не привязаны к тренеру</div>';
+      await showNoCoachState(el);
       return;
     }
     el.innerHTML =
@@ -1297,13 +1389,32 @@ async function renderAthleteMyCoach() {
         (data.connected_at ? '<p class="text-muted">Подключено: ' + formatDateTime(data.connected_at) + '</p>' : '') +
       '</div>';
   } catch(err) {
-    var el = document.getElementById('coach-info');
-    if (err.message && (err.message.includes('404') || err.message.toLowerCase().includes('не найден') || err.message.toLowerCase().includes('not found'))) {
-      el.innerHTML = '<div class="empty-state">Вы не привязаны к тренеру</div>';
-    } else {
-      showToast(err.message, 'error');
-    }
+    await showNoCoachState(el);
   }
+}
+
+async function showNoCoachState(el) {
+  // Check if there's a pending outgoing request
+  try {
+    var data = await API.get('/connections/requests/outgoing');
+    if (data && data.id && data.status === 'pending') {
+      var coachName = (data.coach && data.coach.full_name) || '';
+      var coachLogin = (data.coach && data.coach.login) || '';
+      el.innerHTML =
+        '<div class="card" style="max-width:400px">' +
+          '<p>Вы не привязаны к тренеру</p>' +
+          '<div class="list-item mt-12">' +
+            '<div>' +
+              '<strong>Заявка отправлена</strong>' +
+              (coachName ? '<div>' + escHtml(coachName) + ' <span class="text-muted">(' + escHtml(coachLogin) + ')</span></div>' : '') +
+              '<div class="text-muted">Статус: ожидает подтверждения</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      return;
+    }
+  } catch(e) { /* no outgoing request */ }
+  el.innerHTML = '<div class="empty-state">Вы не привязаны к тренеру.<br><a href="#athlete-find-coach" style="color:#2196F3">Найти тренера</a></div>';
 }
 
 // ==================== ATHLETE: My Groups ====================
@@ -1502,7 +1613,22 @@ async function renderCoachAnalytics() {
   c.innerHTML = '<h2>Аналитика</h2><div id="analytics-content"><div class="empty-state">Загрузка...</div></div>';
 
   try {
-    var overview = await API.get('/analytics/overview');
+    var results = await Promise.all([
+      API.get('/analytics/overview'),
+      API.get('/connections/athletes').catch(function() { return []; })
+    ]);
+    var overview = results[0];
+    var athletesData = results[1];
+    var athletesList = Array.isArray(athletesData) ? athletesData : (athletesData.items || athletesData.athletes || []);
+
+    // Build name lookup: athlete_id -> full_name (login)
+    var nameMap = {};
+    for (var n = 0; n < athletesList.length; n++) {
+      var at = athletesList[n];
+      var aid = at.athlete_id || at.id || at.user_id;
+      nameMap[aid] = escHtml(at.full_name || at.athlete_full_name || '') + ' <span class="text-muted">(' + escHtml(at.login || at.athlete_login || '') + ')</span>';
+    }
+
     var el = document.getElementById('analytics-content');
 
     var totalAthletes = overview.total_athletes || 0;
@@ -1528,9 +1654,10 @@ async function renderCoachAnalytics() {
         var a = athletes[i];
         var cr = a.completion_rate != null ? (a.completion_rate * 100).toFixed(0) + '%' : '-';
         var effort = a.avg_effort != null ? a.avg_effort.toFixed(1) : '-';
+        var athleteName = nameMap[a.athlete_id] || escHtml(a.athlete_id || '');
         html +=
           '<tr>' +
-            '<td>' + escHtml(a.athlete_id || '') + '</td>' +
+            '<td>' + athleteName + '</td>' +
             '<td>' + (a.total_reports || 0) + '</td>' +
             '<td>' + effort + ' / 10</td>' +
             '<td>' + cr + '</td>' +
@@ -1638,6 +1765,16 @@ async function renderCoachAI() {
           '<button class="btn btn-success" onclick="requestAI(\'analysis\')">Анализ тренировок</button>' +
         '</div>' +
       '</div>' +
+      '<div class="card mt-16" style="max-width:700px">' +
+        '<h3 class="mb-12">Сводка по всем спортсменам</h3>' +
+        '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">' +
+          '<div><label>Дата от</label><input type="date" id="summary-date-from" style="width:160px;margin-bottom:0"></div>' +
+          '<div><label>Дата до</label><input type="date" id="summary-date-to" style="width:160px;margin-bottom:0"></div>' +
+        '</div>' +
+        '<label class="mt-12">Фокус (необязательно)</label>' +
+        '<textarea id="summary-context" placeholder="Например: обрати внимание на жалобы на самочувствие..." rows="2"></textarea>' +
+        '<button class="btn btn-primary mt-12" onclick="requestSummary()">Сгенерировать сводку</button>' +
+      '</div>' +
       '<div id="ai-result"></div>';
 
     el.innerHTML = html;
@@ -1668,7 +1805,7 @@ async function requestAI(type) {
           '<span>Модель: ' + escHtml(resp.model || 'LLM') + '</span>' +
           '<span>' + formatDateTime(resp.generated_at) + '</span>' +
         '</div>' +
-        '<div class="ai-response">' + escHtml(resp.content || 'Нет данных') + '</div>' +
+        '<div class="ai-response">' + renderMarkdown(resp.content || 'Нет данных') + '</div>' +
       '</div>';
 
     resultEl.innerHTML = html;
@@ -1680,6 +1817,46 @@ async function requestAI(type) {
           '<p style="color:#E65100"><strong>Ollama недоступна</strong></p>' +
           '<p class="text-muted">LLM-сервер не запущен или модель не загружена. Выполните:</p>' +
           '<code style="display:block;background:#f5f5f5;padding:8px;border-radius:4px;margin-top:8px">docker compose -f deployments/docker-compose.yml exec ollama ollama pull gemma3:4b</code>' +
+        '</div>';
+    } else {
+      resultEl.innerHTML = '<div class="card mt-16" style="border-color:#f44336"><p style="color:#d32f2f">' + escHtml(msg) + '</p></div>';
+    }
+  }
+}
+
+async function requestSummary() {
+  var resultEl = document.getElementById('ai-result');
+  resultEl.innerHTML = '<div class="loading-block"><div class="spinner"></div>Генерация сводки... Это может занять до 3 минут.</div>';
+
+  var body = {};
+  var dateFrom = qs('#summary-date-from');
+  var dateTo = qs('#summary-date-to');
+  var context = qs('#summary-context');
+  if (dateFrom && dateFrom.value) body.date_from = dateFrom.value;
+  if (dateTo && dateTo.value) body.date_to = dateTo.value;
+  if (context && context.value.trim()) body.context = context.value.trim();
+
+  try {
+    var resp = await API.post('/ai/coach/summary', body);
+
+    var html =
+      '<div class="card mt-16">' +
+        '<div class="ai-response-header">' +
+          '<strong>Сводка за ' + escHtml(resp.date_from || '') + ' — ' + escHtml(resp.date_to || '') + '</strong>' +
+          '<span>Модель: ' + escHtml(resp.model || 'LLM') + '</span>' +
+          '<span>' + formatDateTime(resp.generated_at) + '</span>' +
+        '</div>' +
+        '<div class="ai-response">' + renderMarkdown(resp.content || 'Нет данных') + '</div>' +
+      '</div>';
+
+    resultEl.innerHTML = html;
+  } catch(err) {
+    var msg = err.message || '';
+    if (msg.includes('503') || msg.toLowerCase().includes('unavailable')) {
+      resultEl.innerHTML =
+        '<div class="card mt-16" style="border-color:#FF9800">' +
+          '<p style="color:#E65100"><strong>Ollama недоступна</strong></p>' +
+          '<p class="text-muted">LLM-сервер не запущен или модель не загружена.</p>' +
         '</div>';
     } else {
       resultEl.innerHTML = '<div class="card mt-16" style="border-color:#f44336"><p style="color:#d32f2f">' + escHtml(msg) + '</p></div>';

@@ -289,6 +289,10 @@ func TestIntegration(t *testing.T) {
 		t.Run("Archive_Success", testTrainingArchiveSuccess)
 		t.Run("Archive_NotCompleted", testTrainingArchiveNotCompleted)
 		t.Run("GetArchived", testTrainingGetArchived)
+		t.Run("GetGroupPlans", testTrainingGetGroupPlans)
+		t.Run("GetGroupPlans_AllIncludingPast", testTrainingGetGroupPlansAllIncludingPast)
+		t.Run("GetGroupPlans_AsAthlete", testTrainingGetGroupPlansAsAthlete)
+		t.Run("GetGroupPlans_EmptyResult", testTrainingGetGroupPlansEmptyResult)
 		t.Run("DeleteAssignment_Success", testTrainingDeleteAssignmentSuccess)
 	})
 
@@ -316,10 +320,13 @@ func TestIntegration(t *testing.T) {
 	})
 
 	t.Run("AI", func(t *testing.T) {
+		// Fast auth/role checks first, before heavy Ollama calls
+		t.Run("Recommendations_AsAthlete", testAIRecommendationsAsAthlete)
+		t.Run("Summary_AsAthlete", testAISummaryAsAthlete)
+		t.Run("Recommendations_NoAuth", testAIRecommendationsNoAuth)
 		t.Run("Recommendations_AsCoach", testAIRecommendationsAsCoach)
 		t.Run("Analysis_AsCoach", testAIAnalysisAsCoach)
-		t.Run("Recommendations_AsAthlete", testAIRecommendationsAsAthlete)
-		t.Run("Recommendations_NoAuth", testAIRecommendationsNoAuth)
+		t.Run("Summary_AsCoach", testAISummaryAsCoach)
 	})
 }
 

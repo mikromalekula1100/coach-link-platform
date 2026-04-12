@@ -773,6 +773,246 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   # ----------------------------------------------------------
+  # ANALYTICS
+  # ----------------------------------------------------------
+  /api/v1/analytics/athletes/{athleteId}/summary:
+    get:
+      tags: [Analytics]
+      summary: Сводная статистика спортсмена
+      description: Агрегированные показатели по всем тренировкам спортсмена. Доступно только тренеру.
+      operationId: getAthleteSummary
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      responses:
+        '200':
+          description: Статистика спортсмена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+
+  /api/v1/analytics/athletes/{athleteId}/progress:
+    get:
+      tags: [Analytics]
+      summary: Прогресс спортсмена по периодам
+      description: Метрики, сгруппированные по неделям или месяцам. Доступно только тренеру.
+      operationId: getAthleteProgress
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Начало периода (по умолчанию 12 недель назад)
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Данные прогресса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+
+  /api/v1/analytics/overview:
+    get:
+      tags: [Analytics]
+      summary: Обзор по всем спортсменам тренера
+      description: Общие показатели и статистика по каждому спортсмену. Доступно только тренеру.
+      operationId: getCoachOverview
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Обзорная статистика
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoachOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+
+  /api/v1/analytics/me/summary:
+    get:
+      tags: [Analytics]
+      summary: Моя статистика (спортсмен)
+      description: Агрегированные показатели по всем тренировкам авторизованного спортсмена.
+      operationId: getMySummary
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Статистика спортсмена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AthleteSummary'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/v1/analytics/me/progress:
+    get:
+      tags: [Analytics]
+      summary: Мой прогресс (спортсмен)
+      description: Метрики авторизованного спортсмена, сгруппированные по неделям или месяцам.
+      operationId: getMyProgress
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [week, month]
+            default: week
+        - name: date_from
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: date_to
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Данные прогресса
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProgressResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ----------------------------------------------------------
+  # AI
+  # ----------------------------------------------------------
+  /api/v1/ai/athletes/{athleteId}/recommendations:
+    post:
+      tags: [AI]
+      summary: AI-рекомендации по тренировкам спортсмена
+      operationId: getAIRecommendations
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: string
+                  description: Дополнительный контекст от тренера
+      responses:
+        '200':
+          description: Рекомендации сгенерированы
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIResponse'
+        '403':
+          description: Доступно только тренерам
+        '503':
+          description: LLM-сервис недоступен
+
+  /api/v1/ai/athletes/{athleteId}/analysis:
+    post:
+      tags: [AI]
+      summary: AI-анализ тренировочного процесса спортсмена
+      operationId: getAIAnalysis
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AthleteId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                context:
+                  type: string
+      responses:
+        '200':
+          description: Анализ сгенерирован
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AIResponse'
+        '403':
+          description: Доступно только тренерам
+        '503':
+          description: LLM-сервис недоступен
+
+  /api/v1/ai/coach/summary:
+    post:
+      tags: [AI]
+      summary: Сводка по отчётам всех спортсменов за период
+      description: |
+        Собирает текстовые отчёты всех спортсменов тренера за указанный период
+        и генерирует краткую сводку с помощью LLM: тенденции, жалобы, кому нужна корректировка.
+      operationId: getCoachSummary
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date_from:
+                  type: string
+                  format: date
+                  description: Начало периода (по умолчанию 7 дней назад)
+                date_to:
+                  type: string
+                  format: date
+                  description: Конец периода (по умолчанию сегодня)
+                context:
+                  type: string
+                  description: Фокус тренера (например "обрати внимание на жалобы")
+      responses:
+        '200':
+          description: Сводка сгенерирована
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SummaryResponse'
+        '400':
+          description: Нет данных за период
+        '403':
+          description: Доступно только тренерам
+        '503':
+          description: LLM-сервис недоступен
+
+  # ----------------------------------------------------------
   # INTERNAL API (service-to-service, not for mobile clients)
   # ----------------------------------------------------------
   /internal/users/{userId}:
@@ -884,6 +1124,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Доступно только тренерам
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/training/groups/{groupId}/plans:
+    get:
+      tags: [Training]
+      summary: Планы, назначенные группе
+      description: |
+        Возвращает пагинированный список тренировочных планов, назначенных указанной группе.
+        Доступно только тренеру, создавшему эти планы.
+        По умолчанию возвращает только активные планы (scheduled_date >= сегодня).
+      operationId: getGroupPlans
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/GroupId'
+        - name: active
+          in: query
+          required: false
+          description: Если true (по умолчанию), возвращает только планы с scheduled_date >= сегодня
+          schema:
+            type: boolean
+            default: true
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: page_size
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Пагинированный список планов группы
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, pagination]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/GroupPlanListItem'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -1945,6 +2239,11 @@ components:
             created_at:
               type: string
               format: date-time
+            group_id:
+              type: string
+              format: uuid
+              nullable: true
+              description: ID группы, если план был назначен группе
         assignments:
           type: array
           description: Созданные назначения
@@ -1965,6 +2264,32 @@ components:
         template:
           description: Созданный шаблон (если save_as_template=true)
           $ref: '#/components/schemas/TrainingTemplate'
+
+    GroupPlanListItem:
+      type: object
+      required: [id, title, description, scheduled_date, created_at, group_id, assignment_count]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+          example: "Интервальная тренировка"
+        description:
+          type: string
+        scheduled_date:
+          type: string
+          format: date
+        created_at:
+          type: string
+          format: date-time
+        group_id:
+          type: string
+          format: uuid
+        assignment_count:
+          type: integer
+          description: Количество индивидуальных назначений по этому плану
+          example: 5
 
     AssignmentListItem:
       type: object
@@ -2301,6 +2626,148 @@ components:
           type: integer
           description: Общее количество страниц
           example: 3
+
+    AthleteSummary:
+      type: object
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+        total_reports:
+          type: integer
+        total_duration_minutes:
+          type: integer
+        total_distance_km:
+          type: number
+          format: double
+        avg_duration_minutes:
+          type: number
+          format: double
+        avg_perceived_effort:
+          type: number
+          format: double
+        avg_heart_rate:
+          type: number
+          format: double
+        max_heart_rate_ever:
+          type: integer
+          nullable: true
+        completion_rate:
+          type: number
+          format: double
+          description: "Доля выполненных заданий (0.0 — 1.0)"
+        total_assignments:
+          type: integer
+
+    ProgressPoint:
+      type: object
+      properties:
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+        report_count:
+          type: integer
+        total_duration_minutes:
+          type: integer
+        avg_perceived_effort:
+          type: number
+          format: double
+        avg_heart_rate:
+          type: number
+          format: double
+        total_distance_km:
+          type: number
+          format: double
+
+    ProgressResponse:
+      type: object
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+        period:
+          type: string
+          enum: [week, month]
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProgressPoint'
+
+    CoachOverview:
+      type: object
+      properties:
+        total_athletes:
+          type: integer
+        total_assignments:
+          type: integer
+        total_reports:
+          type: integer
+        completion_rate:
+          type: number
+          format: double
+          description: "Процент выполнения (0 — 100)"
+        athletes:
+          type: array
+          items:
+            type: object
+            properties:
+              athlete_id:
+                type: string
+                format: uuid
+              total_reports:
+                type: integer
+              avg_effort:
+                type: number
+                format: double
+              completion_rate:
+                type: number
+                format: double
+
+    AIResponse:
+      type: object
+      required: [athlete_id, type, content, generated_at, model]
+      properties:
+        athlete_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [recommendations, analysis]
+        content:
+          type: string
+          description: Сгенерированный текст (markdown)
+        generated_at:
+          type: string
+          format: date-time
+        model:
+          type: string
+          example: "gemma3:4b"
+
+    SummaryResponse:
+      type: object
+      required: [type, content, date_from, date_to, generated_at, model]
+      properties:
+        type:
+          type: string
+          example: "summary"
+        content:
+          type: string
+          description: Сгенерированная сводка (markdown)
+        date_from:
+          type: string
+          format: date
+        date_to:
+          type: string
+          format: date
+        generated_at:
+          type: string
+          format: date-time
+        model:
+          type: string
+          example: "gemma3:4b"
 
     ErrorResponse:
       type: object

@@ -26,17 +26,17 @@ func New(db *sqlx.DB) *Repository {
 
 func (r *Repository) CreatePlan(ctx context.Context, plan *model.TrainingPlan) error {
 	query := `
-		INSERT INTO training_plans (coach_id, title, description, scheduled_date)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO training_plans (coach_id, title, description, scheduled_date, group_id)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, created_at`
 	return r.db.QueryRowxContext(ctx, query,
-		plan.CoachID, plan.Title, plan.Description, plan.ScheduledDate,
+		plan.CoachID, plan.Title, plan.Description, plan.ScheduledDate, plan.GroupID,
 	).Scan(&plan.ID, &plan.CreatedAt)
 }
 
 func (r *Repository) GetPlanByID(ctx context.Context, id string) (*model.TrainingPlan, error) {
 	var plan model.TrainingPlan
-	query := `SELECT id, coach_id, title, description, scheduled_date, created_at FROM training_plans WHERE id = $1`
+	query := `SELECT id, coach_id, title, description, scheduled_date, group_id, created_at FROM training_plans WHERE id = $1`
 	err := r.db.GetContext(ctx, &plan, query, id)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -50,6 +50,54 @@ func (r *Repository) GetPlanByID(ctx context.Context, id string) (*model.Trainin
 func (r *Repository) DeletePlan(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, `DELETE FROM training_plans WHERE id = $1`, id)
 	return err
+}
+
+func (r *Repository) GetGroupPlans(ctx context.Context, coachID, groupID string, activeOnly bool, page, pageSize int) ([]model.GroupPlanRow, int, error) {
+	var conditions []string
+	var args []interface{}
+	argIdx := 1
+
+	conditions = append(conditions, fmt.Sprintf("p.coach_id = $%d", argIdx))
+	args = append(args, coachID)
+	argIdx++
+
+	conditions = append(conditions, fmt.Sprintf("p.group_id = $%d", argIdx))
+	args = append(args, groupID)
+	argIdx++
+
+	if activeOnly {
+		conditions = append(conditions, "p.scheduled_date >= CURRENT_DATE")
+	}
+
+	where := strings.Join(conditions, " AND ")
+
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) FROM training_plans p WHERE %s`, where)
+
+	var total int
+	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * pageSize
+
+	dataQuery := fmt.Sprintf(`
+		SELECT p.id, p.title, p.description, p.scheduled_date, p.created_at, p.group_id,
+		       COUNT(a.id) AS assignment_count
+		FROM training_plans p
+		LEFT JOIN training_assignments a ON a.plan_id = p.id
+		WHERE %s
+		GROUP BY p.id
+		ORDER BY p.scheduled_date DESC
+		LIMIT $%d OFFSET $%d`, where, argIdx, argIdx+1)
+
+	args = append(args, pageSize, offset)
+
+	var rows []model.GroupPlanRow
+	if err := r.db.SelectContext(ctx, &rows, dataQuery, args...); err != nil {
+		return nil, 0, err
+	}
+
+	return rows, total, nil
 }
 
 // ──────────────────────────────────────────────
@@ -510,7 +558,8 @@ func (r *Repository) GetReportsByAthleteID(ctx context.Context, athleteID, dateF
 			tr.duration_minutes, tr.perceived_effort,
 			tr.max_heart_rate, tr.avg_heart_rate, tr.distance_km,
 			tr.created_at,
-			p.title, p.scheduled_date
+			p.title, p.scheduled_date,
+			a.athlete_full_name, a.athlete_login
 		FROM training_reports tr
 		JOIN training_assignments a ON a.id = tr.assignment_id
 		JOIN training_plans p ON p.id = a.plan_id

@@ -31,6 +31,12 @@ func IsServiceError(err error) (*ServiceError, bool) {
 	return nil, false
 }
 
+type athleteGroup struct {
+	FullName string
+	Login    string
+	Reports  []model.ReportWithPlan
+}
+
 func badRequest(msg string) *ServiceError {
 	return &ServiceError{Code: "VALIDATION_ERROR", Message: msg, Status: 400}
 }
@@ -49,13 +55,15 @@ func serviceUnavailable(msg string) *ServiceError {
 
 type Service struct {
 	analyticsClient *client.AnalyticsClient
+	trainingClient  *client.TrainingClient
 	ollamaClient    *client.OllamaClient
 	log             zerolog.Logger
 }
 
-func New(analyticsClient *client.AnalyticsClient, ollamaClient *client.OllamaClient, log zerolog.Logger) *Service {
+func New(analyticsClient *client.AnalyticsClient, trainingClient *client.TrainingClient, ollamaClient *client.OllamaClient, log zerolog.Logger) *Service {
 	return &Service{
 		analyticsClient: analyticsClient,
+		trainingClient:  trainingClient,
 		ollamaClient:    ollamaClient,
 		log:             log,
 	}
@@ -113,9 +121,109 @@ func (s *Service) GenerateAnalysis(ctx context.Context, athleteID, coachContext 
 	}, nil
 }
 
+// GenerateSummary produces a digest of all athletes' reports for the coach over a date range.
+func (s *Service) GenerateSummary(ctx context.Context, coachID string, req model.SummaryRequest) (*model.SummaryResponse, error) {
+	dateFrom := req.DateFrom
+	dateTo := req.DateTo
+	if dateFrom == "" {
+		dateFrom = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
+	}
+	if dateTo == "" {
+		dateTo = time.Now().Format("2006-01-02")
+	}
+
+	// Get all athlete IDs for this coach
+	athleteIDs, err := s.trainingClient.GetCoachAthleteIDs(ctx, coachID)
+	if err != nil {
+		s.log.Error().Err(err).Str("coach_id", coachID).Msg("failed to fetch coach athlete IDs")
+		return nil, internalError("failed to fetch athlete list")
+	}
+	if len(athleteIDs) == 0 {
+		return nil, badRequest("No athletes found for this coach")
+	}
+
+	// Fetch reports per athlete
+	var allAthletes []athleteGroup
+	totalReports := 0
+
+	for _, aid := range athleteIDs {
+		reports, err := s.trainingClient.GetReportsByAthlete(ctx, aid, dateFrom, dateTo)
+		if err != nil {
+			s.log.Warn().Err(err).Str("athlete_id", aid).Msg("failed to fetch reports, skipping")
+			continue
+		}
+		if len(reports) == 0 {
+			continue
+		}
+		name := reports[0].AthleteFullName
+		login := reports[0].AthleteLogin
+		allAthletes = append(allAthletes, athleteGroup{FullName: name, Login: login, Reports: reports})
+		totalReports += len(reports)
+	}
+
+	if totalReports == 0 {
+		return nil, badRequest("No reports found for the specified period")
+	}
+
+	// Build prompt
+	systemPrompt := "Ты — ассистент тренера по лёгкой атлетике. Тебе даны отчёты спортсменов за период. " +
+		"Сделай краткую структурированную сводку для тренера: общие тенденции, на что обратить внимание, " +
+		"кому нужна корректировка нагрузки, есть ли жалобы на самочувствие.\n" +
+		"Отвечай на русском языке. Будь конкретным, ссылайся на конкретных спортсменов по имени."
+
+	userPrompt := s.buildSummaryPrompt(allAthletes, dateFrom, dateTo, req.Context)
+
+	content, err := s.ollamaClient.Generate(ctx, systemPrompt, userPrompt)
+	if err != nil {
+		s.log.Error().Err(err).Str("coach_id", coachID).Msg("ollama generation failed for summary")
+		return nil, serviceUnavailable("AI service temporarily unavailable")
+	}
+
+	return &model.SummaryResponse{
+		Type:        "summary",
+		Content:     content,
+		DateFrom:    dateFrom,
+		DateTo:      dateTo,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
+		Model:       s.ollamaClient.Model(),
+	}, nil
+}
+
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
+
+func (s *Service) buildSummaryPrompt(athletes []athleteGroup, dateFrom, dateTo, coachContext string) string {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("=== Отчёты за %s — %s ===\n", dateFrom, dateTo))
+
+	for _, a := range athletes {
+		b.WriteString(fmt.Sprintf("\n--- %s (%s) ---\n", a.FullName, a.Login))
+		for _, r := range a.Reports {
+			b.WriteString(fmt.Sprintf("%s: %s (%d мин, нагрузка %d/10",
+				r.ScheduledDate, r.Title, r.DurationMinutes, r.PerceivedEffort))
+			if r.DistanceKm != nil {
+				b.WriteString(fmt.Sprintf(", %.1f км", *r.DistanceKm))
+			}
+			if r.AvgHeartRate != nil {
+				b.WriteString(fmt.Sprintf(", пульс %d", *r.AvgHeartRate))
+			}
+			b.WriteString(")\n")
+			if r.Content != "" {
+				b.WriteString(fmt.Sprintf("  Комментарий: %s\n", r.Content))
+			}
+		}
+	}
+
+	if coachContext != "" {
+		b.WriteString(fmt.Sprintf("\n=== Фокус тренера ===\n%s\n", coachContext))
+	}
+
+	b.WriteString("\nСделай краткую сводку для тренера.")
+
+	return b.String()
+}
 
 func (s *Service) fetchAthleteData(ctx context.Context, athleteID string) (*model.AthleteSummary, []model.ReportWithPlan, error) {
 	summary, err := s.analyticsClient.GetAthleteSummary(ctx, athleteID)

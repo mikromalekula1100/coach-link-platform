@@ -163,6 +163,7 @@ func (s *Service) CreatePlan(ctx context.Context, coachID, coachFullName, coachL
 		Title:         title,
 		Description:   description,
 		ScheduledDate: scheduledDate,
+		GroupID:       req.GroupID,
 	}
 	if err := s.repo.CreatePlan(ctx, plan); err != nil {
 		return nil, err
@@ -210,6 +211,7 @@ func (s *Service) CreatePlan(ctx context.Context, coachID, coachFullName, coachL
 			Title:         plan.Title,
 			ScheduledDate: plan.ScheduledDate.Format("2006-01-02"),
 			CreatedAt:     plan.CreatedAt.Format(time.RFC3339),
+			GroupID:       plan.GroupID,
 		},
 		Assignments: assignmentResponses,
 	}
@@ -322,6 +324,10 @@ func (s *Service) ArchiveAssignment(ctx context.Context, coachID, assignmentID s
 
 func (s *Service) GetArchivedAssignments(ctx context.Context, coachID string, filter model.AssignmentFilter) ([]model.AssignmentRow, int, error) {
 	return s.repo.GetArchivedAssignments(ctx, coachID, filter)
+}
+
+func (s *Service) GetGroupPlans(ctx context.Context, coachID, groupID string, activeOnly bool, page, pageSize int) ([]model.GroupPlanRow, int, error) {
+	return s.repo.GetGroupPlans(ctx, coachID, groupID, activeOnly, page, pageSize)
 }
 
 // ──────────────────────────────────────────────

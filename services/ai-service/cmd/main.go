@@ -31,8 +31,9 @@ func main() {
 
 	// ── Layers ─────────────────────────────────
 	analyticsClient := client.NewAnalyticsClient(cfg.AnalyticsServiceURL)
+	trainingClient := client.NewTrainingClient(cfg.TrainingServiceURL)
 	ollamaClient := client.NewOllamaClient(cfg.OllamaURL, cfg.OllamaModel)
-	svc := service.New(analyticsClient, ollamaClient, logger)
+	svc := service.New(analyticsClient, trainingClient, ollamaClient, logger)
 	h := handler.New(svc)
 
 	// ── Echo HTTP ──────────────────────────────

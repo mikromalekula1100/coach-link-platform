@@ -62,8 +62,48 @@ func testAIAnalysisAsCoach(t *testing.T) {
 }
 
 func testAIRecommendationsAsAthlete(t *testing.T) {
-	status, data, err := client.Post(
+	// First proxied request to AI service can be slow due to Docker DNS / TCP cold start.
+	aiClient := NewAPIClient(getBaseURL())
+	aiClient.httpClient.Timeout = 2 * time.Minute
+
+	status, data, err := aiClient.Post(
 		fmt.Sprintf("/api/v1/ai/athletes/%s/recommendations", athlete1ID),
+		nil,
+		athlete1Token,
+	)
+	require.NoError(t, err)
+	requireStatus(t, http.StatusForbidden, status, data)
+}
+
+func testAISummaryAsCoach(t *testing.T) {
+	aiClient := NewAPIClient(getBaseURL())
+	aiClient.httpClient.Timeout = 6 * time.Minute
+
+	status, data, err := aiClient.Post(
+		"/api/v1/ai/coach/summary",
+		map[string]string{
+			"context": "Обрати внимание на жалобы спортсменов",
+		},
+		coach1Token,
+	)
+	require.NoError(t, err)
+	// Accept 200 (Ollama working) or 503 (Ollama not available) or 400 (no reports for period)
+	assert.True(t, status == http.StatusOK || status == http.StatusServiceUnavailable || status == http.StatusBadRequest,
+		"expected 200, 400 or 503, got %d: %s", status, string(data))
+
+	if status == http.StatusOK {
+		var resp map[string]interface{}
+		require.NoError(t, json.Unmarshal(data, &resp))
+		assert.Equal(t, "summary", resp["type"])
+		assert.NotEmpty(t, resp["content"])
+		assert.NotEmpty(t, resp["date_from"])
+		assert.NotEmpty(t, resp["date_to"])
+	}
+}
+
+func testAISummaryAsAthlete(t *testing.T) {
+	status, data, err := client.Post(
+		"/api/v1/ai/coach/summary",
 		nil,
 		athlete1Token,
 	)

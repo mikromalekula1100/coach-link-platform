@@ -120,10 +120,11 @@ type CreateTrainingPlanResponse struct {
 
 // PlanResponse within CreateTrainingPlanResponse.
 type PlanResponse struct {
-	ID            string `json:"id"`
-	Title         string `json:"title"`
-	ScheduledDate string `json:"scheduled_date"`
-	CreatedAt     string `json:"created_at"`
+	ID            string  `json:"id"`
+	Title         string  `json:"title"`
+	ScheduledDate string  `json:"scheduled_date"`
+	CreatedAt     string  `json:"created_at"`
+	GroupID       *string `json:"group_id,omitempty"`
 }
 
 // AssignmentBriefResponse within CreateTrainingPlanResponse.
@@ -248,4 +249,21 @@ type PaginatedAssignments struct {
 type PaginatedTemplates struct {
 	Items      []TemplateResponse `json:"items"`
 	Pagination Pagination         `json:"pagination"`
+}
+
+// GroupPlanListItem from GET /training/groups/:groupId/plans.
+type GroupPlanListItem struct {
+	ID              string `json:"id"`
+	Title           string `json:"title"`
+	Description     string `json:"description"`
+	ScheduledDate   string `json:"scheduled_date"`
+	CreatedAt       string `json:"created_at"`
+	GroupID         string `json:"group_id"`
+	AssignmentCount int    `json:"assignment_count"`
+}
+
+// PaginatedGroupPlans for GET /training/groups/:groupId/plans.
+type PaginatedGroupPlans struct {
+	Items      []GroupPlanListItem `json:"items"`
+	Pagination Pagination          `json:"pagination"`
 }

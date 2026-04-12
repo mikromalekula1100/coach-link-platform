@@ -52,6 +52,9 @@ func testTrainingCreatePlanWithGroupID(t *testing.T) {
 	require.NoError(t, json.Unmarshal(data, &resp))
 	// Group has athlete1 (athlete2 was removed in group tests)
 	assert.GreaterOrEqual(t, len(resp.Assignments), 1)
+	// Verify group_id is returned in plan response
+	require.NotNil(t, resp.Plan.GroupID)
+	assert.Equal(t, groupID, *resp.Plan.GroupID)
 }
 
 func testTrainingCreatePlanWithSaveAsTemplate(t *testing.T) {
@@ -363,6 +366,63 @@ func testTrainingGetArchived(t *testing.T) {
 	var resp PaginatedAssignments
 	require.NoError(t, json.Unmarshal(data, &resp))
 	assert.GreaterOrEqual(t, resp.Pagination.TotalItems, 1)
+}
+
+func testTrainingGetGroupPlans(t *testing.T) {
+	require.NotEmpty(t, groupID, "depends on group tests")
+
+	status, data, err := client.Get(
+		fmt.Sprintf("/api/v1/training/groups/%s/plans", groupID),
+		coach1Token,
+	)
+	require.NoError(t, err)
+	requireStatus(t, http.StatusOK, status, data)
+
+	var resp PaginatedGroupPlans
+	require.NoError(t, json.Unmarshal(data, &resp))
+	assert.GreaterOrEqual(t, resp.Pagination.TotalItems, 1)
+	assert.NotEmpty(t, resp.Items[0].GroupID)
+	assert.Equal(t, groupID, resp.Items[0].GroupID)
+	assert.GreaterOrEqual(t, resp.Items[0].AssignmentCount, 1)
+}
+
+func testTrainingGetGroupPlansAllIncludingPast(t *testing.T) {
+	require.NotEmpty(t, groupID, "depends on group tests")
+
+	status, data, err := client.Get(
+		fmt.Sprintf("/api/v1/training/groups/%s/plans?active=false", groupID),
+		coach1Token,
+	)
+	require.NoError(t, err)
+	requireStatus(t, http.StatusOK, status, data)
+
+	var resp PaginatedGroupPlans
+	require.NoError(t, json.Unmarshal(data, &resp))
+	assert.GreaterOrEqual(t, resp.Pagination.TotalItems, 1)
+}
+
+func testTrainingGetGroupPlansAsAthlete(t *testing.T) {
+	require.NotEmpty(t, groupID, "depends on group tests")
+
+	status, data, err := client.Get(
+		fmt.Sprintf("/api/v1/training/groups/%s/plans", groupID),
+		athlete1Token,
+	)
+	require.NoError(t, err)
+	requireStatus(t, http.StatusForbidden, status, data)
+}
+
+func testTrainingGetGroupPlansEmptyResult(t *testing.T) {
+	status, data, err := client.Get(
+		"/api/v1/training/groups/00000000-0000-0000-0000-000000000000/plans",
+		coach1Token,
+	)
+	require.NoError(t, err)
+	requireStatus(t, http.StatusOK, status, data)
+
+	var resp PaginatedGroupPlans
+	require.NoError(t, json.Unmarshal(data, &resp))
+	assert.Equal(t, 0, resp.Pagination.TotalItems)
 }
 
 func testTrainingDeleteAssignmentSuccess(t *testing.T) {

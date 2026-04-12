@@ -19,6 +19,7 @@ type AthleteSummary struct {
 
 type ReportWithPlan struct {
 	ID              string   `json:"id"`
+	AthleteID       string   `json:"athlete_id"`
 	Content         string   `json:"content"`
 	DurationMinutes int      `json:"duration_minutes"`
 	PerceivedEffort int      `json:"perceived_effort"`
@@ -27,6 +28,8 @@ type ReportWithPlan struct {
 	DistanceKm      *float64 `json:"distance_km,omitempty"`
 	Title           string   `json:"title"`
 	ScheduledDate   string   `json:"scheduled_date"`
+	AthleteFullName string   `json:"athlete_full_name"`
+	AthleteLogin    string   `json:"athlete_login"`
 }
 
 // ──────────────────────────────────────────────
@@ -41,6 +44,21 @@ type AIResponse struct {
 	AthleteID   string `json:"athlete_id"`
 	Type        string `json:"type"`
 	Content     string `json:"content"`
+	GeneratedAt string `json:"generated_at"`
+	Model       string `json:"model"`
+}
+
+type SummaryRequest struct {
+	DateFrom string `json:"date_from,omitempty"`
+	DateTo   string `json:"date_to,omitempty"`
+	Context  string `json:"context,omitempty"`
+}
+
+type SummaryResponse struct {
+	Type        string `json:"type"`
+	Content     string `json:"content"`
+	DateFrom    string `json:"date_from"`
+	DateTo      string `json:"date_to"`
 	GeneratedAt string `json:"generated_at"`
 	Model       string `json:"model"`
 }
