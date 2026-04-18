@@ -14,6 +14,7 @@ type Config struct {
 	NotificationServiceURL string
 	AnalyticsServiceURL    string
 	AIServiceURL           string
+	BDUIServiceURL         string
 	JWTSecret              string
 }
 
@@ -27,6 +28,7 @@ func Load() (*Config, error) {
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8004"),
 		AnalyticsServiceURL:    getEnv("ANALYTICS_SERVICE_URL", "http://localhost:8005"),
 		AIServiceURL:           getEnv("AI_SERVICE_URL", "http://localhost:8006"),
+		BDUIServiceURL:         getEnv("BDUI_SERVICE_URL", "http://localhost:8007"),
 		JWTSecret:              os.Getenv("JWT_SECRET"),
 	}
 

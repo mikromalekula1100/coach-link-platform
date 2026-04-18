@@ -68,9 +68,11 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 
 	// Internal API (no auth required, called by other services)
 	e.GET("/internal/reports", h.InternalGetReports)
+	e.GET("/internal/reports/coach", h.InternalGetCoachReports)
 	e.GET("/internal/athletes/:athleteId/stats", h.InternalGetAthleteStats)
 	e.GET("/internal/coach/:coachId/athletes", h.InternalGetCoachAthleteIDs)
 	e.GET("/internal/coach/:coachId/overview", h.InternalGetCoachOverview)
+	e.GET("/internal/assignments/upcoming", h.InternalGetUpcomingAssignments)
 }
 
 // ──────────────────────────────────────────────
@@ -503,6 +505,58 @@ func (h *Handler) InternalGetCoachAthleteIDs(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, ids)
+}
+
+func (h *Handler) InternalGetCoachReports(c echo.Context) error {
+	coachID := c.QueryParam("coach_id")
+	if coachID == "" {
+		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "coach_id query parameter is required"},
+		})
+	}
+
+	limit := 5
+	if v := c.QueryParam("limit"); v != "" {
+		if l, err := strconv.Atoi(v); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	reports, err := h.svc.GetRecentCoachReports(c.Request().Context(), coachID, limit)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	return c.JSON(http.StatusOK, reports)
+}
+
+func (h *Handler) InternalGetUpcomingAssignments(c echo.Context) error {
+	userID := c.QueryParam("user_id")
+	role := c.QueryParam("role")
+	if userID == "" || role == "" {
+		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "user_id and role query parameters are required"},
+		})
+	}
+
+	limit := 5
+	if v := c.QueryParam("limit"); v != "" {
+		if l, err := strconv.Atoi(v); err == nil && l > 0 && l <= 100 {
+			limit = l
+		}
+	}
+
+	rows, err := h.svc.GetUpcomingAssignments(c.Request().Context(), userID, role, limit)
+	if err != nil {
+		return handleError(c, err)
+	}
+
+	items := make([]model.AssignmentListItem, 0, len(rows))
+	for _, r := range rows {
+		items = append(items, toAssignmentListItem(r))
+	}
+
+	return c.JSON(http.StatusOK, items)
 }
 
 func (h *Handler) InternalGetCoachOverview(c echo.Context) error {

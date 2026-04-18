@@ -511,6 +511,15 @@ func (s *Service) GetCoachOverviewStats(ctx context.Context, coachID string) (*m
 	return s.repo.GetCoachOverviewStats(ctx, coachID)
 }
 
+func (s *Service) GetRecentCoachReports(ctx context.Context, coachID string, limit int) ([]model.ReportWithPlan, error) {
+	return s.repo.GetRecentCoachReports(ctx, coachID, limit)
+}
+
+func (s *Service) GetUpcomingAssignments(ctx context.Context, userID, role string, limit int) ([]model.AssignmentRow, error) {
+	return s.repo.GetUpcomingAssignments(ctx, userID, role, limit)
+}
+
+
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────

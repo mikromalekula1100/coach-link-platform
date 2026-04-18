@@ -21,6 +21,7 @@ type Router struct {
 	notificationProxy *httputil.ReverseProxy
 	analyticsProxy    *httputil.ReverseProxy
 	aiProxy           *httputil.ReverseProxy
+	bduiProxy         *httputil.ReverseProxy
 }
 
 // NewRouter parses the upstream URLs from config and creates a Router with
@@ -50,6 +51,10 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 	if err != nil {
 		return nil, err
 	}
+	bduiURL, err := url.Parse(cfg.BDUIServiceURL)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Router{
 		authProxy:         newProxy(authURL),
@@ -58,6 +63,7 @@ func NewRouter(cfg *config.Config) (*Router, error) {
 		notificationProxy: newProxy(notificationURL),
 		analyticsProxy:    newProxy(analyticsURL),
 		aiProxy:           newProxy(aiURL),
+		bduiProxy:         newProxy(bduiURL),
 	}, nil
 }
 
@@ -88,6 +94,9 @@ func (r *Router) RegisterRoutes(e *echo.Echo) {
 
 	// AI service routes.
 	e.Any("/api/v1/ai/*", r.proxyHandler(r.aiProxy))
+
+	// BDUI service routes.
+	e.Any("/api/v1/bdui/*", r.proxyHandler(r.bduiProxy))
 }
 
 // healthCheck responds to liveness probes.

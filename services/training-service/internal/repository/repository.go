@@ -592,3 +592,54 @@ func (r *Repository) GetCoachOverviewStats(ctx context.Context, coachID string) 
 
 	return &stats, nil
 }
+
+func (r *Repository) GetRecentCoachReports(ctx context.Context, coachID string, limit int) ([]model.ReportWithPlan, error) {
+	query := `
+		SELECT
+			tr.id, tr.assignment_id, tr.athlete_id, tr.content,
+			tr.duration_minutes, tr.perceived_effort,
+			tr.max_heart_rate, tr.avg_heart_rate, tr.distance_km,
+			tr.created_at,
+			p.title, p.scheduled_date
+		FROM training_reports tr
+		JOIN training_assignments a ON a.id = tr.assignment_id
+		JOIN training_plans p ON p.id = a.plan_id
+		WHERE a.coach_id = $1
+		ORDER BY tr.created_at DESC
+		LIMIT $2`
+
+	var reports []model.ReportWithPlan
+	if err := r.db.SelectContext(ctx, &reports, query, coachID, limit); err != nil {
+		return nil, err
+	}
+	return reports, nil
+}
+
+func (r *Repository) GetUpcomingAssignments(ctx context.Context, userID, role string, limit int) ([]model.AssignmentRow, error) {
+	var where string
+	if role == "coach" {
+		where = "a.coach_id = $1"
+	} else {
+		where = "a.athlete_id = $1"
+	}
+
+	query := fmt.Sprintf(`
+		SELECT
+			a.id, a.plan_id, a.athlete_id, a.coach_id,
+			a.athlete_full_name, a.athlete_login,
+			a.coach_full_name, a.coach_login,
+			a.status, a.assigned_at, a.completed_at, a.archived_at,
+			p.title, p.description, p.scheduled_date,
+			EXISTS(SELECT 1 FROM training_reports r WHERE r.assignment_id = a.id) AS has_report
+		FROM training_assignments a
+		JOIN training_plans p ON p.id = a.plan_id
+		WHERE %s AND a.status = 'assigned'
+		ORDER BY p.scheduled_date ASC
+		LIMIT $2`, where)
+
+	var rows []model.AssignmentRow
+	if err := r.db.SelectContext(ctx, &rows, query, userID, limit); err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

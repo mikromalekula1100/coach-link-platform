@@ -170,6 +170,20 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
+  bdui-service:
+    build:
+      context: ..
+      dockerfile: services/bdui-service/Dockerfile
+    environment:
+      APP_PORT: "8007"
+      USER_SERVICE_URL: http://user-service:8002
+      TRAINING_SERVICE_URL: http://training-service:8003
+    ports:
+      - "8007:8007"
+    depends_on:
+      - user-service
+      - training-service
+
   api-gateway:
     build:
       context: ..
@@ -182,6 +196,7 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:8004
       ANALYTICS_SERVICE_URL: http://analytics-service:8005
       AI_SERVICE_URL: http://ai-service:8006
+      BDUI_SERVICE_URL: http://bdui-service:8007
       JWT_SECRET: coachlink-jwt-secret-change-in-production
     ports:
       - "8080:8080"
@@ -192,6 +207,7 @@ services:
       - notification-service
       - analytics-service
       - ai-service
+      - bdui-service
 
   web:
     build:
