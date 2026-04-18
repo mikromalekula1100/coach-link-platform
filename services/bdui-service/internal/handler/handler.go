@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -10,8 +11,13 @@ import (
 	"github.com/coach-link/platform/services/bdui-service/internal/service"
 )
 
+type serviceProvider interface {
+	GetScreen(ctx context.Context, screenID, userID, role string) (*model.BduiSchema, error)
+	GetTrainingDetail(ctx context.Context, assignmentID, userID, role string) (*model.BduiSchema, error)
+}
+
 type Handler struct {
-	svc *service.Service
+	svc serviceProvider
 }
 
 func New(svc *service.Service) *Handler {
