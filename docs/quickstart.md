@@ -112,6 +112,7 @@ docker compose -f deployments/docker-compose.yml exec ollama ollama list
 
 **Ускорение на Apple Silicon (M1/M2/M3):** для использования GPU (Metal) установите Ollama нативно (`brew install ollama && ollama serve`) и укажите в docker-compose для ai-service переменную `OLLAMA_URL: http://host.docker.internal:11434`.
 
+
 ## Остановка
 
 ```bash
