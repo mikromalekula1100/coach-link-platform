@@ -1747,6 +1747,10 @@ async function renderCoachAI() {
 
     var html =
       '<div class="card" style="max-width:700px">' +
+        '<p class="text-muted mb-12" style="line-height:1.5">' +
+          'AI анализирует последние 5 тренировок спортсмена: выявляет тенденции, признаки ' +
+          'усталости или прогресса и даёт конкретные рекомендации по дальнейшей подготовке.' +
+        '</p>' +
         '<label>Спортсмен</label>' +
         '<select id="ai-athlete-select">';
     for (var i = 0; i < athletes.length; i++) {
@@ -1758,22 +1762,12 @@ async function renderCoachAI() {
     }
     html +=
         '</select>' +
-        '<label>Контекст (необязательно)</label>' +
-        '<textarea id="ai-context" placeholder="Например: подготовка к соревнованиям на 800м через 2 месяца..." rows="3"></textarea>' +
-        '<div style="display:flex;gap:8px;margin-top:8px">' +
-          '<button class="btn btn-primary" onclick="requestAI(\'recommendations\')">Рекомендации</button>' +
-          '<button class="btn btn-success" onclick="requestAI(\'analysis\')">Анализ тренировок</button>' +
-        '</div>' +
-      '</div>' +
-      '<div class="card mt-16" style="max-width:700px">' +
-        '<h3 class="mb-12">Сводка по всем спортсменам</h3>' +
-        '<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">' +
-          '<div><label>Дата от</label><input type="date" id="summary-date-from" style="width:160px;margin-bottom:0"></div>' +
-          '<div><label>Дата до</label><input type="date" id="summary-date-to" style="width:160px;margin-bottom:0"></div>' +
-        '</div>' +
-        '<label class="mt-12">Фокус (необязательно)</label>' +
-        '<textarea id="summary-context" placeholder="Например: обрати внимание на жалобы на самочувствие..." rows="2"></textarea>' +
-        '<button class="btn btn-primary mt-12" onclick="requestSummary()">Сгенерировать сводку</button>' +
+        '<label>Дополнительный контекст (необязательно)</label>' +
+        '<textarea id="ai-context" placeholder="Например: готовимся к соревнованиям на 800м через 3 недели, обрати внимание на темп..." rows="3"></textarea>' +
+        '<p class="text-muted" style="margin:-8px 0 12px;font-size:12px">' +
+          'Контекст помогает AI учесть текущие цели — например предстоящие старты или конкретные зоны нагрузки.' +
+        '</p>' +
+        '<button class="btn btn-primary" onclick="requestAIRecommendations()">Получить анализ и рекомендации</button>' +
       '</div>' +
       '<div id="ai-result"></div>';
 
@@ -1781,27 +1775,29 @@ async function renderCoachAI() {
   } catch(err) { showToast(err.message, 'error'); }
 }
 
-async function requestAI(type) {
+async function requestAIRecommendations() {
   var athleteId = qs('#ai-athlete-select').value;
   var context = qs('#ai-context').value.trim();
   var resultEl = document.getElementById('ai-result');
 
   if (!athleteId) { showToast('Выберите спортсмена', 'error'); return; }
 
-  resultEl.innerHTML = '<div class="loading-block"><div class="spinner"></div>Генерация ответа... Это может занять до 2 минут.</div>';
-
-  var typeLabel = type === 'recommendations' ? 'Рекомендации' : 'Анализ';
+  resultEl.innerHTML =
+    '<div class="loading-block">' +
+      '<div class="spinner"></div>' +
+      'Анализируем тренировки и генерируем рекомендации… обычно 30–90 секунд.' +
+    '</div>';
 
   try {
     var body = {};
     if (context) body.context = context;
 
-    var resp = await API.post('/ai/athletes/' + athleteId + '/' + type, body);
+    var resp = await API.post('/ai/athletes/' + athleteId + '/recommendations', body);
 
     var html =
       '<div class="card mt-16">' +
         '<div class="ai-response-header">' +
-          '<strong>' + escHtml(typeLabel) + '</strong>' +
+          '<strong>Анализ и рекомендации</strong>' +
           '<span>Модель: ' + escHtml(resp.model || 'LLM') + '</span>' +
           '<span>' + formatDateTime(resp.generated_at) + '</span>' +
         '</div>' +
@@ -1815,51 +1811,22 @@ async function requestAI(type) {
       resultEl.innerHTML =
         '<div class="card mt-16" style="border-color:#FF9800">' +
           '<p style="color:#E65100"><strong>Ollama недоступна</strong></p>' +
-          '<p class="text-muted">LLM-сервер не запущен или модель не загружена. Выполните:</p>' +
-          '<code style="display:block;background:#f5f5f5;padding:8px;border-radius:4px;margin-top:8px">docker compose -f deployments/docker-compose.yml exec ollama ollama pull gemma3:4b</code>' +
+          '<p class="text-muted" style="margin-top:8px">LLM-сервер не запущен или модель не загружена. Выполните:</p>' +
+          '<code style="display:block;background:#f5f5f5;padding:8px;border-radius:4px;margin-top:8px">' +
+            'docker compose -f deployments/docker-compose.yml exec ollama ollama pull gemma3:4b' +
+          '</code>' +
         '</div>';
-    } else {
-      resultEl.innerHTML = '<div class="card mt-16" style="border-color:#f44336"><p style="color:#d32f2f">' + escHtml(msg) + '</p></div>';
-    }
-  }
-}
-
-async function requestSummary() {
-  var resultEl = document.getElementById('ai-result');
-  resultEl.innerHTML = '<div class="loading-block"><div class="spinner"></div>Генерация сводки... Это может занять до 3 минут.</div>';
-
-  var body = {};
-  var dateFrom = qs('#summary-date-from');
-  var dateTo = qs('#summary-date-to');
-  var context = qs('#summary-context');
-  if (dateFrom && dateFrom.value) body.date_from = dateFrom.value;
-  if (dateTo && dateTo.value) body.date_to = dateTo.value;
-  if (context && context.value.trim()) body.context = context.value.trim();
-
-  try {
-    var resp = await API.post('/ai/coach/summary', body);
-
-    var html =
-      '<div class="card mt-16">' +
-        '<div class="ai-response-header">' +
-          '<strong>Сводка за ' + escHtml(resp.date_from || '') + ' — ' + escHtml(resp.date_to || '') + '</strong>' +
-          '<span>Модель: ' + escHtml(resp.model || 'LLM') + '</span>' +
-          '<span>' + formatDateTime(resp.generated_at) + '</span>' +
-        '</div>' +
-        '<div class="ai-response">' + renderMarkdown(resp.content || 'Нет данных') + '</div>' +
-      '</div>';
-
-    resultEl.innerHTML = html;
-  } catch(err) {
-    var msg = err.message || '';
-    if (msg.includes('503') || msg.toLowerCase().includes('unavailable')) {
+    } else if (msg.toLowerCase().includes('not enough') || msg.toLowerCase().includes('недостаточно')) {
       resultEl.innerHTML =
-        '<div class="card mt-16" style="border-color:#FF9800">' +
-          '<p style="color:#E65100"><strong>Ollama недоступна</strong></p>' +
-          '<p class="text-muted">LLM-сервер не запущен или модель не загружена.</p>' +
+        '<div class="card mt-16" style="border-color:#2196F3">' +
+          '<p style="color:#1565C0"><strong>Недостаточно данных</strong></p>' +
+          '<p class="text-muted" style="margin-top:8px">У спортсмена нет выполненных тренировок. Дождитесь хотя бы одного отчёта.</p>' +
         '</div>';
     } else {
-      resultEl.innerHTML = '<div class="card mt-16" style="border-color:#f44336"><p style="color:#d32f2f">' + escHtml(msg) + '</p></div>';
+      resultEl.innerHTML =
+        '<div class="card mt-16" style="border-color:#f44336">' +
+          '<p style="color:#d32f2f">' + escHtml(msg) + '</p>' +
+        '</div>';
     }
   }
 }

@@ -915,7 +915,11 @@ paths:
   /api/v1/ai/athletes/{athleteId}/recommendations:
     post:
       tags: [AI]
-      summary: AI-рекомендации по тренировкам спортсмена
+      summary: AI-анализ и рекомендации по тренировкам спортсмена
+      description: |
+        Анализирует последние 5 отчётов спортсмена: выявляет тенденции, признаки
+        усталости или прогресса, затем даёт конкретные рекомендации по дальнейшей
+        подготовке. Доступно только тренеру, с которым связан спортсмен.
       operationId: getAIRecommendations
       security:
         - BearerAuth: []
@@ -929,86 +933,18 @@ paths:
               properties:
                 context:
                   type: string
-                  description: Дополнительный контекст от тренера
+                  description: Дополнительный контекст от тренера (например, предстоящие соревнования)
       responses:
         '200':
-          description: Рекомендации сгенерированы
+          description: Анализ и рекомендации сгенерированы
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/AIResponse'
-        '403':
-          description: Доступно только тренерам
-        '503':
-          description: LLM-сервис недоступен
-
-  /api/v1/ai/athletes/{athleteId}/analysis:
-    post:
-      tags: [AI]
-      summary: AI-анализ тренировочного процесса спортсмена
-      operationId: getAIAnalysis
-      security:
-        - BearerAuth: []
-      parameters:
-        - $ref: '#/components/parameters/AthleteId'
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                context:
-                  type: string
-      responses:
-        '200':
-          description: Анализ сгенерирован
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AIResponse'
-        '403':
-          description: Доступно только тренерам
-        '503':
-          description: LLM-сервис недоступен
-
-  /api/v1/ai/coach/summary:
-    post:
-      tags: [AI]
-      summary: Сводка по отчётам всех спортсменов за период
-      description: |
-        Собирает текстовые отчёты всех спортсменов тренера за указанный период
-        и генерирует краткую сводку с помощью LLM: тенденции, жалобы, кому нужна корректировка.
-      operationId: getCoachSummary
-      security:
-        - BearerAuth: []
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                date_from:
-                  type: string
-                  format: date
-                  description: Начало периода (по умолчанию 7 дней назад)
-                date_to:
-                  type: string
-                  format: date
-                  description: Конец периода (по умолчанию сегодня)
-                context:
-                  type: string
-                  description: Фокус тренера (например "обрати внимание на жалобы")
-      responses:
-        '200':
-          description: Сводка сгенерирована
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SummaryResponse'
         '400':
-          description: Нет данных за период
+          description: Недостаточно данных о тренировках
         '403':
-          description: Доступно только тренерам
+          description: Доступно только тренерам; спортсмен должен быть связан с тренером
         '503':
           description: LLM-сервис недоступен
 
@@ -2735,33 +2671,10 @@ components:
           format: uuid
         type:
           type: string
-          enum: [recommendations, analysis]
+          enum: [recommendations]
         content:
           type: string
-          description: Сгенерированный текст (markdown)
-        generated_at:
-          type: string
-          format: date-time
-        model:
-          type: string
-          example: "gemma3:4b"
-
-    SummaryResponse:
-      type: object
-      required: [type, content, date_from, date_to, generated_at, model]
-      properties:
-        type:
-          type: string
-          example: "summary"
-        content:
-          type: string
-          description: Сгенерированная сводка (markdown)
-        date_from:
-          type: string
-          format: date
-        date_to:
-          type: string
-          format: date
+          description: Сгенерированный текст с анализом и рекомендациями (markdown)
         generated_at:
           type: string
           format: date-time

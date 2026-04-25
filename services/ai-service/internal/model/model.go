@@ -48,21 +48,6 @@ type AIResponse struct {
 	Model       string `json:"model"`
 }
 
-type SummaryRequest struct {
-	DateFrom string `json:"date_from,omitempty"`
-	DateTo   string `json:"date_to,omitempty"`
-	Context  string `json:"context,omitempty"`
-}
-
-type SummaryResponse struct {
-	Type        string `json:"type"`
-	Content     string `json:"content"`
-	DateFrom    string `json:"date_from"`
-	DateTo      string `json:"date_to"`
-	GeneratedAt string `json:"generated_at"`
-	Model       string `json:"model"`
-}
-
 // ──────────────────────────────────────────────
 // Error types
 // ──────────────────────────────────────────────

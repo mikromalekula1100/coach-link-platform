@@ -31,8 +31,9 @@ func main() {
 
 	// ── Layers ─────────────────────────────────
 	trainingClient := client.NewTrainingClient(cfg.TrainingServiceURL)
+	userClient := client.NewUserClient(cfg.UserServiceURL)
 	svc := service.New(trainingClient, logger)
-	h := handler.New(svc)
+	h := handler.New(svc, userClient)
 
 	// ── Echo HTTP ──────────────────────────────
 	e := echo.New()

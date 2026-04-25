@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/coach-link/platform/services/notification-service/internal/model"
-	"github.com/coach-link/platform/services/notification-service/internal/pusher"
 	"github.com/coach-link/platform/services/notification-service/internal/repository"
 )
 
@@ -44,13 +43,30 @@ func IsServiceError(err error) (*ServiceError, bool) {
 // Service
 // ──────────────────────────────────────────────
 
-type Service struct {
-	repo   *repository.Repository
-	fcm    *pusher.FCMPusher
-	log    zerolog.Logger
+// NotificationRepository abstracts all database operations used by the service.
+type NotificationRepository interface {
+	CreateNotification(ctx context.Context, n *model.Notification) error
+	GetNotifications(ctx context.Context, userID string, isRead *bool, page, pageSize int) ([]model.Notification, int, error)
+	GetUnreadCount(ctx context.Context, userID string) (int, error)
+	MarkRead(ctx context.Context, userID, notificationID string) (*model.Notification, error)
+	MarkAllRead(ctx context.Context, userID string) error
+	UpsertDeviceToken(ctx context.Context, userID, fcmToken, deviceInfo string) error
+	GetDeviceTokensByUserID(ctx context.Context, userID string) ([]string, error)
 }
 
-func New(repo *repository.Repository, fcm *pusher.FCMPusher, log zerolog.Logger) *Service {
+// FCMSender abstracts push notification delivery.
+type FCMSender interface {
+	Enabled() bool
+	Send(ctx context.Context, tokens []string, title, body string, data map[string]string)
+}
+
+type Service struct {
+	repo NotificationRepository
+	fcm  FCMSender
+	log  zerolog.Logger
+}
+
+func New(repo NotificationRepository, fcm FCMSender, log zerolog.Logger) *Service {
 	return &Service{repo: repo, fcm: fcm, log: log}
 }
 

@@ -5,16 +5,18 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/coach-link/platform/services/analytics-service/internal/client"
 	"github.com/coach-link/platform/services/analytics-service/internal/model"
 	"github.com/coach-link/platform/services/analytics-service/internal/service"
 )
 
 type Handler struct {
-	svc *service.Service
+	svc        *service.Service
+	userClient *client.UserClient
 }
 
-func New(svc *service.Service) *Handler {
-	return &Handler{svc: svc}
+func New(svc *service.Service, userClient *client.UserClient) *Handler {
+	return &Handler{svc: svc, userClient: userClient}
 }
 
 // RegisterRoutes wires all routes onto the Echo instance.
@@ -41,7 +43,8 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 
 // GetAthleteSummary returns an aggregated summary for a specific athlete.
 func (h *Handler) GetAthleteSummary(c echo.Context) error {
-	if _, err := extractCoach(c); err != nil {
+	coachID, err := extractCoach(c)
+	if err != nil {
 		return err
 	}
 
@@ -52,9 +55,13 @@ func (h *Handler) GetAthleteSummary(c echo.Context) error {
 		})
 	}
 
-	summary, err := h.svc.GetAthleteSummary(c.Request().Context(), athleteID)
-	if err != nil {
-		return handleError(c, err)
+	if err := h.guardCoachAthlete(c, coachID, athleteID); err != nil {
+		return err
+	}
+
+	summary, svcErr := h.svc.GetAthleteSummary(c.Request().Context(), athleteID)
+	if svcErr != nil {
+		return handleError(c, svcErr)
 	}
 
 	return c.JSON(http.StatusOK, summary)
@@ -62,7 +69,8 @@ func (h *Handler) GetAthleteSummary(c echo.Context) error {
 
 // GetAthleteProgress returns time-bucketed progress data for a specific athlete.
 func (h *Handler) GetAthleteProgress(c echo.Context) error {
-	if _, err := extractCoach(c); err != nil {
+	coachID, err := extractCoach(c)
+	if err != nil {
 		return err
 	}
 
@@ -73,13 +81,17 @@ func (h *Handler) GetAthleteProgress(c echo.Context) error {
 		})
 	}
 
+	if err := h.guardCoachAthlete(c, coachID, athleteID); err != nil {
+		return err
+	}
+
 	period := c.QueryParam("period")
 	dateFrom := c.QueryParam("date_from")
 	dateTo := c.QueryParam("date_to")
 
-	progress, err := h.svc.GetAthleteProgress(c.Request().Context(), athleteID, period, dateFrom, dateTo)
-	if err != nil {
-		return handleError(c, err)
+	progress, svcErr := h.svc.GetAthleteProgress(c.Request().Context(), athleteID, period, dateFrom, dateTo)
+	if svcErr != nil {
+		return handleError(c, svcErr)
 	}
 
 	return c.JSON(http.StatusOK, progress)
@@ -182,6 +194,24 @@ func (h *Handler) InternalGetAthleteReports(c echo.Context) error {
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
+
+// guardCoachAthlete verifies that athleteID is connected to coachID; returns a
+// JSON error response and a non-nil error if the check fails or the athlete
+// does not belong to this coach.
+func (h *Handler) guardCoachAthlete(c echo.Context, coachID, athleteID string) error {
+	ok, err := h.userClient.BelongsToCoach(c.Request().Context(), coachID, athleteID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "INTERNAL_ERROR", Message: "failed to verify athlete ownership"},
+		})
+	}
+	if !ok {
+		return c.JSON(http.StatusForbidden, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "FORBIDDEN", Message: "athlete does not belong to this coach"},
+		})
+	}
+	return nil
+}
 
 func extractUserID(c echo.Context) (string, error) {
 	userID := c.Request().Header.Get("X-User-ID")

@@ -8,16 +8,23 @@ import (
 type Config struct {
 	AppPort            string
 	TrainingServiceURL string
+	UserServiceURL     string
 }
 
 func Load() *Config {
 	cfg := &Config{
 		AppPort:            getEnv("APP_PORT", "8005"),
 		TrainingServiceURL: os.Getenv("TRAINING_SERVICE_URL"),
+		UserServiceURL:     os.Getenv("USER_SERVICE_URL"),
 	}
 
 	if cfg.TrainingServiceURL == "" {
 		fmt.Fprintln(os.Stderr, "FATAL: TRAINING_SERVICE_URL is required")
+		os.Exit(1)
+	}
+
+	if cfg.UserServiceURL == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: USER_SERVICE_URL is required")
 		os.Exit(1)
 	}
 

@@ -50,6 +50,7 @@ func RegisterRoutes(e *echo.Echo, h *Handler) {
 	internal := e.Group("/internal")
 	internal.GET("/groups/:groupId/members", h.InternalGetGroupMembers)
 	internal.GET("/users/:userId", h.InternalGetUser)
+	internal.GET("/coach/:coachId/has-athlete/:athleteId", h.InternalCheckCoachAthlete)
 }
 
 // ──────────────────────────────────────────────
@@ -464,6 +465,25 @@ func (h *Handler) InternalGetGroupMembers(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, members)
+}
+
+// InternalCheckCoachAthlete returns 200 if the athlete is connected to the coach, 404 otherwise.
+func (h *Handler) InternalCheckCoachAthlete(c echo.Context) error {
+	coachID := c.Param("coachId")
+	athleteID := c.Param("athleteId")
+
+	has, err := h.svc.HasCoachAthleteRelation(c.Request().Context(), coachID, athleteID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "INTERNAL_ERROR", Message: "failed to check relation"},
+		})
+	}
+	if !has {
+		return c.JSON(http.StatusNotFound, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "NOT_FOUND", Message: "athlete is not connected to this coach"},
+		})
+	}
+	return c.NoContent(http.StatusOK)
 }
 
 // ──────────────────────────────────────────────

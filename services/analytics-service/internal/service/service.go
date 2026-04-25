@@ -7,7 +7,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/coach-link/platform/services/analytics-service/internal/client"
 	"github.com/coach-link/platform/services/analytics-service/internal/model"
 )
 
@@ -42,12 +41,20 @@ func internalError(msg string) *ServiceError {
 // Service
 // ──────────────────────────────────────────────
 
+// TrainingClient is the training data dependency used by the service.
+type TrainingClient interface {
+	GetReports(ctx context.Context, athleteID, dateFrom, dateTo string) ([]model.ReportWithPlan, error)
+	GetAthleteStats(ctx context.Context, athleteID string) (*model.AthleteStats, error)
+	GetCoachAthleteIDs(ctx context.Context, coachID string) ([]string, error)
+	GetCoachOverview(ctx context.Context, coachID string) (*model.CoachOverviewStats, error)
+}
+
 type Service struct {
-	trainingClient *client.TrainingClient
+	trainingClient TrainingClient
 	log            zerolog.Logger
 }
 
-func New(trainingClient *client.TrainingClient, log zerolog.Logger) *Service {
+func New(trainingClient TrainingClient, log zerolog.Logger) *Service {
 	return &Service{trainingClient: trainingClient, log: log}
 }
 
@@ -147,7 +154,7 @@ func (s *Service) GetCoachOverview(ctx context.Context, coachID string) (*model.
 
 	var completionRate float64
 	if totalAssignments > 0 {
-		completionRate = float64(totalCompleted) / float64(totalAssignments) * 100
+		completionRate = float64(totalCompleted) / float64(totalAssignments)
 	}
 
 	return &model.CoachOverview{

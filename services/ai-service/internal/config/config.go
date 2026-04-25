@@ -8,7 +8,7 @@ import (
 type Config struct {
 	AppPort             string
 	AnalyticsServiceURL string
-	TrainingServiceURL  string
+	UserServiceURL      string
 	OllamaURL           string
 	OllamaModel         string
 }
@@ -17,7 +17,7 @@ func Load() *Config {
 	cfg := &Config{
 		AppPort:             getEnv("APP_PORT", "8006"),
 		AnalyticsServiceURL: os.Getenv("ANALYTICS_SERVICE_URL"),
-		TrainingServiceURL:  os.Getenv("TRAINING_SERVICE_URL"),
+		UserServiceURL:      os.Getenv("USER_SERVICE_URL"),
 		OllamaURL:           getEnv("OLLAMA_URL", "http://ollama:11434"),
 		OllamaModel:         getEnv("OLLAMA_MODEL", "gemma3:4b"),
 	}
@@ -27,8 +27,8 @@ func Load() *Config {
 		os.Exit(1)
 	}
 
-	if cfg.TrainingServiceURL == "" {
-		fmt.Fprintln(os.Stderr, "FATAL: TRAINING_SERVICE_URL is required")
+	if cfg.UserServiceURL == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: USER_SERVICE_URL is required")
 		os.Exit(1)
 	}
 

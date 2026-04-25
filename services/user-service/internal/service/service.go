@@ -44,13 +44,45 @@ func badRequest(msg string) *ServiceError {
 // Service
 // ──────────────────────────────────────────────
 
+// UserRepository abstracts all database operations used by the service.
+type UserRepository interface {
+	CreateProfile(ctx context.Context, p model.UserProfile) error
+	GetProfileByID(ctx context.Context, id string) (*model.UserProfile, error)
+	SearchProfiles(ctx context.Context, query, role string, page, pageSize int) ([]model.UserProfile, int, error)
+	CreateConnectionRequest(ctx context.Context, athleteID, coachID string) (*model.ConnectionRequest, error)
+	GetConnectionRequestByID(ctx context.Context, id string) (*model.ConnectionRequest, error)
+	GetIncomingRequests(ctx context.Context, coachID, status string, page, pageSize int) ([]model.ConnectionRequest, int, error)
+	GetOutgoingRequest(ctx context.Context, athleteID string) (*model.ConnectionRequest, error)
+	UpdateConnectionRequestStatus(ctx context.Context, id, status string) error
+	CreateRelation(ctx context.Context, coachID, athleteID string) error
+	GetRelationByAthleteID(ctx context.Context, athleteID string) (*model.CoachAthleteRelation, error)
+	GetAthletes(ctx context.Context, coachID, query string, page, pageSize int) ([]model.AthleteInfo, int, error)
+	DeleteRelation(ctx context.Context, coachID, athleteID string) error
+	HasRelation(ctx context.Context, coachID, athleteID string) (bool, error)
+	CreateGroup(ctx context.Context, coachID, name string) (*model.TrainingGroup, error)
+	GetGroupByID(ctx context.Context, id string) (*model.TrainingGroup, error)
+	GetCoachGroups(ctx context.Context, coachID string, page, pageSize int) ([]model.TrainingGroupSummary, int, error)
+	GetAthleteGroups(ctx context.Context, athleteID string, page, pageSize int) ([]model.TrainingGroupSummary, int, error)
+	UpdateGroup(ctx context.Context, id, name string) error
+	DeleteGroup(ctx context.Context, id string) error
+	AddGroupMember(ctx context.Context, groupID, athleteID string) error
+	RemoveGroupMember(ctx context.Context, groupID, athleteID string) error
+	GetGroupMembers(ctx context.Context, groupID, query string) ([]model.GroupMember, error)
+	GetGroupMemberIDs(ctx context.Context, groupID string) ([]string, error)
+}
+
+// UserEventPublisher abstracts NATS JetStream publishing.
+type UserEventPublisher interface {
+	Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+}
+
 type Service struct {
-	repo *repository.Repository
-	js   nats.JetStreamContext
+	repo UserRepository
+	js   UserEventPublisher
 	log  zerolog.Logger
 }
 
-func New(repo *repository.Repository, js nats.JetStreamContext, log zerolog.Logger) *Service {
+func New(repo UserRepository, js UserEventPublisher, log zerolog.Logger) *Service {
 	return &Service{repo: repo, js: js, log: log}
 }
 
@@ -608,6 +640,11 @@ func (s *Service) publishEvent(subject string, evt events.Event) {
 	} else {
 		s.log.Info().Str("subject", subject).Str("event_id", evt.EventID).Msg("event published")
 	}
+}
+
+// HasCoachAthleteRelation reports whether the given athlete is connected to the given coach.
+func (s *Service) HasCoachAthleteRelation(ctx context.Context, coachID, athleteID string) (bool, error) {
+	return s.repo.HasRelation(ctx, coachID, athleteID)
 }
 
 // IsServiceError checks if an error is a ServiceError and returns it.

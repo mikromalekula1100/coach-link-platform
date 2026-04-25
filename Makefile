@@ -54,6 +54,15 @@ clean:
 swagger:
 	open http://localhost:8090
 
+## Run unit tests for all services (no Docker required)
+test-unit:
+	@echo "Running unit tests..."
+	@for svc in ai-service analytics-service training-service notification-service; do \
+		echo "--- $$svc ---"; \
+		cd services/$$svc && go test ./internal/service/... -v && cd ../..; \
+	done
+	@echo "Unit tests done."
+
 ## Run E2E smoke test
 test-e2e:
 	@bash scripts/e2e-test.sh

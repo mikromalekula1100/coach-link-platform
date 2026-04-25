@@ -61,8 +61,8 @@ func (c *OllamaClient) Generate(ctx context.Context, systemPrompt, userPrompt st
 		},
 		Stream: false,
 		Options: map[string]interface{}{
-			"num_ctx":     4096,
-			"num_predict": 1536,
+			"num_ctx":     2048,
+			"num_predict": 1200,
 			"temperature": 0.7,
 		},
 	}

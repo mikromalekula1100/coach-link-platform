@@ -8,7 +8,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/coach-link/platform/services/ai-service/internal/client"
 	"github.com/coach-link/platform/services/ai-service/internal/model"
 )
 
@@ -31,12 +30,6 @@ func IsServiceError(err error) (*ServiceError, bool) {
 	return nil, false
 }
 
-type athleteGroup struct {
-	FullName string
-	Login    string
-	Reports  []model.ReportWithPlan
-}
-
 func badRequest(msg string) *ServiceError {
 	return &ServiceError{Code: "VALIDATION_ERROR", Message: msg, Status: 400}
 }
@@ -53,32 +46,55 @@ func serviceUnavailable(msg string) *ServiceError {
 // Service
 // ──────────────────────────────────────────────
 
+// AnalyticsClient is the analytics data dependency used by the service.
+type AnalyticsClient interface {
+	GetAthleteSummary(ctx context.Context, athleteID string) (*model.AthleteSummary, error)
+	GetAthleteReports(ctx context.Context, athleteID string) ([]model.ReportWithPlan, error)
+}
+
+// OllamaClient is the LLM generation dependency used by the service.
+type OllamaClient interface {
+	Generate(ctx context.Context, systemPrompt, userPrompt string) (string, error)
+	Model() string
+}
+
 type Service struct {
-	analyticsClient *client.AnalyticsClient
-	trainingClient  *client.TrainingClient
-	ollamaClient    *client.OllamaClient
+	analyticsClient AnalyticsClient
+	ollamaClient    OllamaClient
 	log             zerolog.Logger
 }
 
-func New(analyticsClient *client.AnalyticsClient, trainingClient *client.TrainingClient, ollamaClient *client.OllamaClient, log zerolog.Logger) *Service {
+func New(analyticsClient AnalyticsClient, ollamaClient OllamaClient, log zerolog.Logger) *Service {
 	return &Service{
 		analyticsClient: analyticsClient,
-		trainingClient:  trainingClient,
 		ollamaClient:    ollamaClient,
 		log:             log,
 	}
 }
 
-// GenerateRecommendations produces training recommendations for the given athlete.
+// GenerateRecommendations fetches the athlete's last 5 reports and produces
+// a combined analysis + training recommendations via the LLM.
 func (s *Service) GenerateRecommendations(ctx context.Context, athleteID, coachContext string) (*model.AIResponse, error) {
 	summary, reports, err := s.fetchAthleteData(ctx, athleteID)
 	if err != nil {
 		return nil, err
 	}
 
-	systemPrompt := "Ты — ассистент тренера по лёгкой атлетике. На основе данных о тренировках спортсмена дай конкретные рекомендации по тренировочному процессу.\nОтвечай на русском языке. Будь конкретным и практичным."
+	systemPrompt := "Ты — помощник тренера по лёгкой атлетике. " +
+		"Тренер — профессионал, ему не нужны объяснения очевидного.\n\n" +
+		"Формат ответа (строго):\n" +
+		"**Тенденции** — 3–4 наблюдения с конкретными цифрами из данных\n" +
+		"**Риски** — только реальные сигналы тревоги\n" +
+		"**Рекомендации** — 4–6 конкретных действий на ближайшие 1–2 недели\n\n" +
+		"Правила:\n" +
+		"- Не начинай с приветствий и вводных фраз\n" +
+		"- Не задавай вопросов тренеру, не проси уточнений\n" +
+		"- Не пиши «нужно больше данных» — работай с тем, что есть\n" +
+		"- Каждое утверждение подкрепляй числом из отчётов\n" +
+		"- Рекомендации — конкретные действия, не общие слова\n" +
+		"Отвечай на русском языке."
 
-	userPrompt := s.buildUserPrompt(summary, reports, coachContext, "Дай рекомендации по дальнейшему тренировочному процессу")
+	userPrompt := s.buildUserPrompt(summary, reports, coachContext)
 
 	content, err := s.ollamaClient.Generate(ctx, systemPrompt, userPrompt)
 	if err != nil {
@@ -95,135 +111,9 @@ func (s *Service) GenerateRecommendations(ctx context.Context, athleteID, coachC
 	}, nil
 }
 
-// GenerateAnalysis produces a training analysis for the given athlete.
-func (s *Service) GenerateAnalysis(ctx context.Context, athleteID, coachContext string) (*model.AIResponse, error) {
-	summary, reports, err := s.fetchAthleteData(ctx, athleteID)
-	if err != nil {
-		return nil, err
-	}
-
-	systemPrompt := "Проанализируй тренировочные данные спортсмена. Выяви тенденции, сильные и слабые стороны.\nОтвечай на русском языке. Будь конкретным и практичным."
-
-	userPrompt := s.buildUserPrompt(summary, reports, coachContext, "Проанализируй тренировочный процесс этого спортсмена")
-
-	content, err := s.ollamaClient.Generate(ctx, systemPrompt, userPrompt)
-	if err != nil {
-		s.log.Error().Err(err).Str("athlete_id", athleteID).Msg("ollama generation failed")
-		return nil, serviceUnavailable("AI service temporarily unavailable")
-	}
-
-	return &model.AIResponse{
-		AthleteID:   athleteID,
-		Type:        "analysis",
-		Content:     content,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Model:       s.ollamaClient.Model(),
-	}, nil
-}
-
-// GenerateSummary produces a digest of all athletes' reports for the coach over a date range.
-func (s *Service) GenerateSummary(ctx context.Context, coachID string, req model.SummaryRequest) (*model.SummaryResponse, error) {
-	dateFrom := req.DateFrom
-	dateTo := req.DateTo
-	if dateFrom == "" {
-		dateFrom = time.Now().AddDate(0, 0, -7).Format("2006-01-02")
-	}
-	if dateTo == "" {
-		dateTo = time.Now().Format("2006-01-02")
-	}
-
-	// Get all athlete IDs for this coach
-	athleteIDs, err := s.trainingClient.GetCoachAthleteIDs(ctx, coachID)
-	if err != nil {
-		s.log.Error().Err(err).Str("coach_id", coachID).Msg("failed to fetch coach athlete IDs")
-		return nil, internalError("failed to fetch athlete list")
-	}
-	if len(athleteIDs) == 0 {
-		return nil, badRequest("No athletes found for this coach")
-	}
-
-	// Fetch reports per athlete
-	var allAthletes []athleteGroup
-	totalReports := 0
-
-	for _, aid := range athleteIDs {
-		reports, err := s.trainingClient.GetReportsByAthlete(ctx, aid, dateFrom, dateTo)
-		if err != nil {
-			s.log.Warn().Err(err).Str("athlete_id", aid).Msg("failed to fetch reports, skipping")
-			continue
-		}
-		if len(reports) == 0 {
-			continue
-		}
-		name := reports[0].AthleteFullName
-		login := reports[0].AthleteLogin
-		allAthletes = append(allAthletes, athleteGroup{FullName: name, Login: login, Reports: reports})
-		totalReports += len(reports)
-	}
-
-	if totalReports == 0 {
-		return nil, badRequest("No reports found for the specified period")
-	}
-
-	// Build prompt
-	systemPrompt := "Ты — ассистент тренера по лёгкой атлетике. Тебе даны отчёты спортсменов за период. " +
-		"Сделай краткую структурированную сводку для тренера: общие тенденции, на что обратить внимание, " +
-		"кому нужна корректировка нагрузки, есть ли жалобы на самочувствие.\n" +
-		"Отвечай на русском языке. Будь конкретным, ссылайся на конкретных спортсменов по имени."
-
-	userPrompt := s.buildSummaryPrompt(allAthletes, dateFrom, dateTo, req.Context)
-
-	content, err := s.ollamaClient.Generate(ctx, systemPrompt, userPrompt)
-	if err != nil {
-		s.log.Error().Err(err).Str("coach_id", coachID).Msg("ollama generation failed for summary")
-		return nil, serviceUnavailable("AI service temporarily unavailable")
-	}
-
-	return &model.SummaryResponse{
-		Type:        "summary",
-		Content:     content,
-		DateFrom:    dateFrom,
-		DateTo:      dateTo,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Model:       s.ollamaClient.Model(),
-	}, nil
-}
-
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
-
-func (s *Service) buildSummaryPrompt(athletes []athleteGroup, dateFrom, dateTo, coachContext string) string {
-	var b strings.Builder
-
-	b.WriteString(fmt.Sprintf("=== Отчёты за %s — %s ===\n", dateFrom, dateTo))
-
-	for _, a := range athletes {
-		b.WriteString(fmt.Sprintf("\n--- %s (%s) ---\n", a.FullName, a.Login))
-		for _, r := range a.Reports {
-			b.WriteString(fmt.Sprintf("%s: %s (%d мин, нагрузка %d/10",
-				r.ScheduledDate, r.Title, r.DurationMinutes, r.PerceivedEffort))
-			if r.DistanceKm != nil {
-				b.WriteString(fmt.Sprintf(", %.1f км", *r.DistanceKm))
-			}
-			if r.AvgHeartRate != nil {
-				b.WriteString(fmt.Sprintf(", пульс %d", *r.AvgHeartRate))
-			}
-			b.WriteString(")\n")
-			if r.Content != "" {
-				b.WriteString(fmt.Sprintf("  Комментарий: %s\n", r.Content))
-			}
-		}
-	}
-
-	if coachContext != "" {
-		b.WriteString(fmt.Sprintf("\n=== Фокус тренера ===\n%s\n", coachContext))
-	}
-
-	b.WriteString("\nСделай краткую сводку для тренера.")
-
-	return b.String()
-}
 
 func (s *Service) fetchAthleteData(ctx context.Context, athleteID string) (*model.AthleteSummary, []model.ReportWithPlan, error) {
 	summary, err := s.analyticsClient.GetAthleteSummary(ctx, athleteID)
@@ -242,18 +132,17 @@ func (s *Service) fetchAthleteData(ctx context.Context, athleteID string) (*mode
 		return nil, nil, badRequest("Not enough training data for analysis")
 	}
 
-	// Limit to last 15 reports to avoid token overflow
-	if len(reports) > 15 {
-		reports = reports[len(reports)-15:]
+	// Use only the 5 most recent reports to keep the prompt short and generation fast.
+	if len(reports) > 5 {
+		reports = reports[len(reports)-5:]
 	}
 
 	return summary, reports, nil
 }
 
-func (s *Service) buildUserPrompt(summary *model.AthleteSummary, reports []model.ReportWithPlan, coachContext, instruction string) string {
+func (s *Service) buildUserPrompt(summary *model.AthleteSummary, reports []model.ReportWithPlan, coachContext string) string {
 	var b strings.Builder
 
-	// Summary stats
 	b.WriteString("=== Общая статистика спортсмена ===\n")
 	b.WriteString(fmt.Sprintf("Всего тренировок: %d\n", summary.TotalReports))
 	b.WriteString(fmt.Sprintf("Общая продолжительность: %d мин\n", summary.TotalDurationMin))
@@ -264,10 +153,9 @@ func (s *Service) buildUserPrompt(summary *model.AthleteSummary, reports []model
 	if summary.MaxHeartRateEver != nil {
 		b.WriteString(fmt.Sprintf("Максимальный пульс за всё время: %d уд/мин\n", *summary.MaxHeartRateEver))
 	}
-	b.WriteString(fmt.Sprintf("Процент выполнения заданий: %.0f%%\n", summary.CompletionRate))
+	b.WriteString(fmt.Sprintf("Процент выполнения заданий: %.0f%%\n", summary.CompletionRate*100))
 	b.WriteString(fmt.Sprintf("Всего заданий: %d\n", summary.TotalAssignments))
 
-	// Reports
 	b.WriteString(fmt.Sprintf("\n=== Последние %d тренировок ===\n", len(reports)))
 	for i, r := range reports {
 		b.WriteString(fmt.Sprintf("\n--- Тренировка %d ---\n", i+1))
@@ -289,12 +177,11 @@ func (s *Service) buildUserPrompt(summary *model.AthleteSummary, reports []model
 		}
 	}
 
-	// Optional coach context
 	if coachContext != "" {
 		b.WriteString(fmt.Sprintf("\n=== Контекст от тренера ===\n%s\n", coachContext))
 	}
 
-	b.WriteString(fmt.Sprintf("\n%s.", instruction))
+	b.WriteString("\nПроанализируй тренировочный процесс и дай рекомендации по дальнейшей подготовке.")
 
 	return b.String()
 }

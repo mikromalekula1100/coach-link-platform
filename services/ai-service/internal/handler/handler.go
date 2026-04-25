@@ -5,33 +5,30 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/coach-link/platform/services/ai-service/internal/client"
 	"github.com/coach-link/platform/services/ai-service/internal/model"
 	"github.com/coach-link/platform/services/ai-service/internal/service"
 )
 
 type Handler struct {
-	svc *service.Service
+	svc        *service.Service
+	userClient *client.UserClient
 }
 
-func New(svc *service.Service) *Handler {
-	return &Handler{svc: svc}
+func New(svc *service.Service, userClient *client.UserClient) *Handler {
+	return &Handler{svc: svc, userClient: userClient}
 }
 
 // RegisterRoutes wires all routes onto the Echo instance.
 func RegisterRoutes(e *echo.Echo, h *Handler) {
 	api := e.Group("/api/v1/ai")
 	api.POST("/athletes/:athleteId/recommendations", h.GetRecommendations)
-	api.POST("/athletes/:athleteId/analysis", h.GetAnalysis)
-	api.POST("/coach/summary", h.GetCoachSummary)
 }
-
-// ──────────────────────────────────────────────
-// Handlers
-// ──────────────────────────────────────────────
 
 // GetRecommendations generates AI training recommendations for an athlete.
 func (h *Handler) GetRecommendations(c echo.Context) error {
-	if _, err := extractCoach(c); err != nil {
+	coachID, err := extractCoach(c)
+	if err != nil {
 		return err
 	}
 
@@ -40,6 +37,10 @@ func (h *Handler) GetRecommendations(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
 			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "athleteId is required"},
 		})
+	}
+
+	if err := h.guardCoachAthlete(c, coachID, athleteID); err != nil {
+		return err
 	}
 
 	var req model.AIRequest
@@ -54,51 +55,25 @@ func (h *Handler) GetRecommendations(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// GetAnalysis generates AI training analysis for an athlete.
-func (h *Handler) GetAnalysis(c echo.Context) error {
-	if _, err := extractCoach(c); err != nil {
-		return err
-	}
-
-	athleteID := c.Param("athleteId")
-	if athleteID == "" {
-		return c.JSON(http.StatusBadRequest, model.ErrorResponse{
-			Error: model.ErrorDetail{Code: "VALIDATION_ERROR", Message: "athleteId is required"},
-		})
-	}
-
-	var req model.AIRequest
-	_ = c.Bind(&req)
-
-	resp, err := h.svc.GenerateAnalysis(c.Request().Context(), athleteID, req.Context)
-	if err != nil {
-		return handleError(c, err)
-	}
-
-	return c.JSON(http.StatusOK, resp)
-}
-
-// GetCoachSummary generates a digest of all athletes' reports for the coach.
-func (h *Handler) GetCoachSummary(c echo.Context) error {
-	coachID, err := extractCoach(c)
-	if err != nil {
-		return err
-	}
-
-	var req model.SummaryRequest
-	_ = c.Bind(&req)
-
-	resp, svcErr := h.svc.GenerateSummary(c.Request().Context(), coachID, req)
-	if svcErr != nil {
-		return handleError(c, svcErr)
-	}
-
-	return c.JSON(http.StatusOK, resp)
-}
-
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
+
+// guardCoachAthlete verifies that athleteID is connected to coachID.
+func (h *Handler) guardCoachAthlete(c echo.Context, coachID, athleteID string) error {
+	ok, err := h.userClient.BelongsToCoach(c.Request().Context(), coachID, athleteID)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "INTERNAL_ERROR", Message: "failed to verify athlete ownership"},
+		})
+	}
+	if !ok {
+		return c.JSON(http.StatusForbidden, model.ErrorResponse{
+			Error: model.ErrorDetail{Code: "FORBIDDEN", Message: "athlete does not belong to this coach"},
+		})
+	}
+	return nil
+}
 
 func extractCoach(c echo.Context) (string, error) {
 	userID := c.Request().Header.Get("X-User-ID")

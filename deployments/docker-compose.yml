@@ -139,10 +139,12 @@ services:
     environment:
       APP_PORT: "8005"
       TRAINING_SERVICE_URL: http://training-service:8003
+      USER_SERVICE_URL: http://user-service:8002
     ports:
       - "8005:8005"
     depends_on:
       - training-service
+      - user-service
 
   ai-service:
     build:
@@ -151,13 +153,16 @@ services:
     environment:
       APP_PORT: "8006"
       ANALYTICS_SERVICE_URL: http://analytics-service:8005
-      TRAINING_SERVICE_URL: http://training-service:8003
+      USER_SERVICE_URL: http://user-service:8002
+      # For Docker Ollama (default): OLLAMA_URL: http://ollama:11434
+      # For native Ollama on Apple Silicon (faster): set to host.docker.internal
       OLLAMA_URL: http://ollama:11434
       OLLAMA_MODEL: gemma3:4b
     ports:
       - "8006:8006"
     depends_on:
       - analytics-service
+      - user-service
 
   ollama:
     build:

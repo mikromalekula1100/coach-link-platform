@@ -30,13 +30,28 @@ var (
 
 var loginRegex = regexp.MustCompile(`^[a-zA-Z0-9-]+$`)
 
-type Service struct {
-	repo *repository.Repository
-	cfg  *config.Config
-	js   nats.JetStreamContext
+// AuthRepository abstracts all database operations used by the service.
+type AuthRepository interface {
+	CreateUser(ctx context.Context, user *model.User) error
+	GetUserByLogin(ctx context.Context, login string) (*model.User, error)
+	GetUserByID(ctx context.Context, id string) (*model.User, error)
+	SaveRefreshToken(ctx context.Context, userID, tokenHash string, expiresAt time.Time) error
+	GetRefreshToken(ctx context.Context, tokenHash string) (userID string, expiresAt time.Time, err error)
+	DeleteRefreshToken(ctx context.Context, tokenHash string) error
 }
 
-func New(repo *repository.Repository, cfg *config.Config, js nats.JetStreamContext) *Service {
+// AuthEventPublisher abstracts NATS JetStream publishing.
+type AuthEventPublisher interface {
+	Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+}
+
+type Service struct {
+	repo AuthRepository
+	cfg  *config.Config
+	js   AuthEventPublisher
+}
+
+func New(repo AuthRepository, cfg *config.Config, js AuthEventPublisher) *Service {
 	return &Service{
 		repo: repo,
 		cfg:  cfg,

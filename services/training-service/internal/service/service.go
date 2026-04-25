@@ -10,7 +10,6 @@ import (
 	"github.com/coach-link/platform/pkg/events"
 	"github.com/coach-link/platform/services/training-service/internal/client"
 	"github.com/coach-link/platform/services/training-service/internal/model"
-	"github.com/coach-link/platform/services/training-service/internal/repository"
 )
 
 // ──────────────────────────────────────────────
@@ -53,14 +52,50 @@ func IsServiceError(err error) (*ServiceError, bool) {
 // Service
 // ──────────────────────────────────────────────
 
-type Service struct {
-	repo       *repository.Repository
-	js         nats.JetStreamContext
-	log        zerolog.Logger
-	userClient *client.UserClient
+// TrainingRepository abstracts all database operations used by the service.
+type TrainingRepository interface {
+	CreatePlan(ctx context.Context, plan *model.TrainingPlan) error
+	GetGroupPlans(ctx context.Context, coachID, groupID string, activeOnly bool, page, pageSize int) ([]model.GroupPlanRow, int, error)
+	CreateAssignment(ctx context.Context, a *model.TrainingAssignment) error
+	GetAssignmentByID(ctx context.Context, id string) (*model.AssignmentRow, error)
+	GetCoachAssignments(ctx context.Context, coachID string, filter model.AssignmentFilter) ([]model.AssignmentRow, int, error)
+	GetAthleteAssignments(ctx context.Context, athleteID string, page, pageSize int) ([]model.AssignmentRow, int, error)
+	GetArchivedAssignments(ctx context.Context, coachID string, filter model.AssignmentFilter) ([]model.AssignmentRow, int, error)
+	UpdateAssignmentStatus(ctx context.Context, id, status string) error
+	DeleteAssignment(ctx context.Context, id string) (*model.TrainingAssignment, error)
+	CreateReport(ctx context.Context, report *model.TrainingReport) error
+	GetReportByAssignmentID(ctx context.Context, assignmentID string) (*model.TrainingReport, error)
+	ReportExists(ctx context.Context, assignmentID string) (bool, error)
+	GetTemplateByID(ctx context.Context, id string) (*model.TrainingTemplate, error)
+	GetTemplates(ctx context.Context, coachID, query string, page, pageSize int) ([]model.TrainingTemplate, int, error)
+	CreateTemplate(ctx context.Context, t *model.TrainingTemplate) error
+	UpdateTemplate(ctx context.Context, id string, title, description *string) error
+	DeleteTemplate(ctx context.Context, id string) error
+	GetReportsByAthleteID(ctx context.Context, athleteID, dateFrom, dateTo string) ([]model.ReportWithPlan, error)
+	GetAthleteStats(ctx context.Context, athleteID string) (*model.AthleteStats, error)
+	GetCoachAthleteIDs(ctx context.Context, coachID string) ([]string, error)
+	GetCoachOverviewStats(ctx context.Context, coachID string) (*model.CoachOverviewStats, error)
 }
 
-func New(repo *repository.Repository, js nats.JetStreamContext, log zerolog.Logger, userClient *client.UserClient) *Service {
+// UserServiceClient abstracts the User Service HTTP calls needed by the service.
+type UserServiceClient interface {
+	GetUserByID(ctx context.Context, userID string) (*client.GroupMemberInfo, error)
+	GetGroupMembers(ctx context.Context, groupID string) ([]client.GroupMemberInfo, error)
+}
+
+// EventPublisher abstracts NATS JetStream publishing.
+type EventPublisher interface {
+	Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+}
+
+type Service struct {
+	repo       TrainingRepository
+	js         EventPublisher
+	log        zerolog.Logger
+	userClient UserServiceClient
+}
+
+func New(repo TrainingRepository, js EventPublisher, log zerolog.Logger, userClient UserServiceClient) *Service {
 	return &Service{repo: repo, js: js, log: log, userClient: userClient}
 }
 
