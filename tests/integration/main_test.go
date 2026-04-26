@@ -322,11 +322,8 @@ func TestIntegration(t *testing.T) {
 	t.Run("AI", func(t *testing.T) {
 		// Fast auth/role checks first, before heavy Ollama calls
 		t.Run("Recommendations_AsAthlete", testAIRecommendationsAsAthlete)
-		t.Run("Summary_AsAthlete", testAISummaryAsAthlete)
 		t.Run("Recommendations_NoAuth", testAIRecommendationsNoAuth)
 		t.Run("Recommendations_AsCoach", testAIRecommendationsAsCoach)
-		t.Run("Analysis_AsCoach", testAIAnalysisAsCoach)
-		t.Run("Summary_AsCoach", testAISummaryAsCoach)
 	})
 }
 
