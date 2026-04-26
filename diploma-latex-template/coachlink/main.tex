@@ -1,0 +1,59 @@
+\documentclass[bachelor, fontsize=14pt]{diploma}
+
+\usepackage{booktabs}
+
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}%
+}
+\providecommand{\passthrough}[1]{#1}
+
+% TODO: заменить плейсхолдеры на реальные данные перед финальной сдачей.
+\student{ФИО студента}
+\group{Группа}
+\theme{Создание открытой микросервисной платформы для автоматизации тренировочного процесса и взаимодействия в системе <<тренер-спортсмен>>}
+
+\supervisor{ФИО руководителя}
+\firstConsultant{}
+\secondConsultant{}
+\reviewer{}
+
+\faculty{№ 8 <<Компьютерные науки и прикладная математика>>}
+\department{806}
+\speciality{01.03.02 <<Прикладная математика и информатика>>}
+\profile{Информатика}
+
+\departmentFullName{№ 806}
+\headOfDepartment{ФИО заведующего кафедрой}
+
+% Дата. Оставляем пустое место для дня
+\date{\uline{\hspace{24pt}} мая \the\year\ года}
+
+\input{contents/glossary}
+\input{contents/terms}
+
+\addbibresource{main.bib}
+
+\begin{document}
+    \maketitle
+
+    % \includepdf[pages=-]{extra/task} % Задание на ВКР при необходимости
+    \setcounter{page}{2}
+
+    \include{contents/abstract}
+
+    \tableofcontents
+    \termsanddefenitions
+    \listofabbreviations
+
+    \include{contents/0-introduction}
+    \include{contents/1-analytical-review}
+    \include{contents/2-design}
+    \include{contents/3-implementation-testing}
+    \include{contents/4-conclusion}
+
+    \nocite{go-docs,echo-docs,postgres-docs,nats-docs,docker-docs,openapi-spec,ollama-docs,jwt-rfc}
+    \printbibliography
+
+    \appendix
+    \include{contents/5-appendices}
+\end{document}

@@ -1,0 +1,665 @@
+\section{Реализация и тестирование}
+
+\subsection{Общая структура реализации}
+
+Backend-платформа CoachLink реализована как набор Go-сервисов в монорепозитории. Каждый сервис имеет собственную структуру проекта, включающую точку входа, конфигурацию, HTTP-обработчики, бизнес-логику, модели данных и слой доступа к данным или внешним клиентам.
+
+Основные директории backend:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Директория & Назначение \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!services/api-gateway!} & Единая точка входа и reverse proxy \\
+\passthrough{\lstinline!services/auth-service!} & Авторизация и управление токенами \\
+\passthrough{\lstinline!services/user-service!} & Профили, связи и группы \\
+\passthrough{\lstinline!services/training-service!} & Планы, назначения, отчёты, шаблоны \\
+\passthrough{\lstinline!services/notification-service!} & Уведомления и FCM-токены \\
+\passthrough{\lstinline!services/analytics-service!} & Аналитика тренировочных данных \\
+\passthrough{\lstinline!services/ai-service!} & AI-рекомендации \\
+\passthrough{\lstinline!pkg/events!} & Общие типы событий NATS \\
+\passthrough{\lstinline!deployments!} & Docker Compose и инициализация БД \\
+\passthrough{\lstinline!tests/integration!} & Интеграционные тесты через API Gateway \\
+\end{longtable}
+
+Сервисы запускаются в Docker Compose вместе с PostgreSQL, NATS JetStream, Ollama и вспомогательными контейнерами. Для каждого сервиса предусмотрен Dockerfile. Stateful-сервисы применяют SQL-миграции при запуске.
+
+\subsection{API Gateway}
+
+API Gateway реализован как отдельный Go-сервис. Его основная задача --- принять внешний HTTP-запрос и перенаправить его в нужный backend-сервис. Для этого используются префиксы маршрутов:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Префикс & Целевой сервис \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!/api/v1/auth/*!} & Auth Service \\
+\passthrough{\lstinline!/api/v1/users/*!} & User Service \\
+\passthrough{\lstinline!/api/v1/connections/*!} & User Service \\
+\passthrough{\lstinline!/api/v1/groups/*!} & User Service \\
+\passthrough{\lstinline!/api/v1/training/*!} & Training Service \\
+\passthrough{\lstinline!/api/v1/notifications/*!} & Notification Service \\
+\passthrough{\lstinline!/api/v1/analytics/*!} & Analytics Service \\
+\passthrough{\lstinline!/api/v1/ai/*!} & AI Service \\
+\end{longtable}
+
+Gateway выполняет JWT-проверку для всех защищённых маршрутов. Исключениями являются регистрация, вход, обновление токена и health-check. После успешной проверки токена Gateway извлекает из claims идентификатор пользователя, роль и логин. Эти значения передаются дальше через заголовки:
+
+\begin{lstlisting}
+X-User-ID: <user_id>
+X-User-Role: <coach|athlete>
+X-User-Login: <login>
+\end{lstlisting}
+
+Такой механизм позволяет внутренним сервисам принимать решения о доступе без повторной проверки JWT. Например, Training Service проверяет, может ли текущий пользователь создать план, отправить отчёт или получить назначение.
+
+Gateway также отвечает за CORS и health-check:
+
+\begin{lstlisting}
+GET /health
+\end{lstlisting}
+
+Важно отметить, что rate limiting в текущей реализации не рассматривается как реализованная функциональность. Его можно добавить в дальнейшем как middleware уровня Gateway.
+
+\subsection{Auth Service}
+
+Auth Service отвечает за регистрацию, вход и управление токенами. Сервис использует PostgreSQL-базу \passthrough{\lstinline!auth\_db!} и таблицы \passthrough{\lstinline!users!} и \passthrough{\lstinline!refresh\_tokens!}.
+
+\subsubsection{Регистрация}
+
+При регистрации пользователь передаёт логин, email, пароль, ФИО и роль. DTO запроса содержит ограничения:
+
+\begin{itemize}
+\tightlist
+\item
+  логин обязателен, длина от 3 до 50 символов;
+\item
+  email должен иметь корректный формат;
+\item
+  пароль обязателен, длина от 8 до 128 символов;
+\item
+  ФИО обязательно;
+\item
+  роль должна быть \passthrough{\lstinline!coach!} или \passthrough{\lstinline!athlete!}.
+\end{itemize}
+
+Дополнительно сервис проверяет формат логина регулярным выражением:
+
+\begin{lstlisting}
+^[a-zA-Z0-9-]+$
+\end{lstlisting}
+
+Это ограничение исключает пробелы, кириллицу и специальные символы в логине, что упрощает поиск и использование логина в API.
+
+Пароль хешируется через bcrypt. В базе хранится только \passthrough{\lstinline!password\_hash!}, исходный пароль не сохраняется. После создания пользователя сервис публикует событие \passthrough{\lstinline!coachlink.user.registered!}, содержащее идентификатор пользователя, логин, ФИО, email и роль.
+
+\subsubsection{Вход и токены}
+
+При входе сервис ищет пользователя по логину и сравнивает пароль с bcrypt-хешем. При успешной проверке создаётся пара токенов:
+
+\begin{itemize}
+\tightlist
+\item
+  access token --- JWT с коротким сроком жизни;
+\item
+  refresh token --- opaque token с более длинным сроком жизни.
+\end{itemize}
+
+Access token содержит claims:
+
+\begin{lstlisting}
+{
+  "sub": "uuid",
+  "login": "athlete-login",
+  "role": "athlete",
+  "exp": 1234567890,
+  "iat": 1234567890
+}
+\end{lstlisting}
+
+Refresh token не хранится в открытом виде. Сервис вычисляет SHA-256 хеш токена и сохраняет только хеш. При refresh старый токен удаляется, затем создаётся новая пара access/refresh. При logout refresh token удаляется из базы.
+
+\subsubsection{Основные API Auth Service}
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+Метод & Endpoint & Назначение \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!POST!} & \passthrough{\lstinline!/api/v1/auth/register!} & Регистрация \\
+\passthrough{\lstinline!POST!} & \passthrough{\lstinline!/api/v1/auth/login!} & Вход \\
+\passthrough{\lstinline!POST!} & \passthrough{\lstinline!/api/v1/auth/refresh!} & Обновление access token \\
+\passthrough{\lstinline!POST!} & \passthrough{\lstinline!/api/v1/auth/logout!} & Отзыв refresh token \\
+\end{longtable}
+
+\subsection{User Service}
+
+User Service хранит пользовательские профили, связи тренер-спортсмен и тренировочные группы. Он использует базу \passthrough{\lstinline!user\_db!}.
+
+\subsubsection{Синхронизация профилей}
+
+Профиль пользователя создаётся не напрямую при регистрации, а через событие \passthrough{\lstinline!coachlink.user.registered!}. Auth Service публикует событие после успешной регистрации, а User Service подписан на него через NATS JetStream. При получении события User Service создаёт запись в таблице \passthrough{\lstinline!user\_profiles!}.
+
+Такое разделение позволяет Auth Service отвечать только за учётные данные и токены, а User Service --- за доменную информацию, используемую в тренировочном процессе.
+
+\subsubsection{Поиск пользователей}
+
+Сервис предоставляет поиск по ФИО и логину. Поиск используется, например, когда спортсмен ищет тренера для отправки заявки или тренер ищет спортсмена. Минимальная длина поискового запроса --- два символа. Это ограничение уменьшает количество слишком широких запросов.
+
+Для ускорения поиска в базе включено расширение \passthrough{\lstinline!pg\_trgm!}, а для полей имени и логина создаются trigram-индексы. Это подходит для поиска подстрок и автодополнения.
+
+\subsubsection{Заявки и связи}
+
+Связь тренера и спортсмена создаётся через заявку. Основной сценарий:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Спортсмен находит тренера.
+\item
+  Спортсмен отправляет заявку.
+\item
+  Тренер получает уведомление.
+\item
+  Тренер принимает или отклоняет заявку.
+\item
+  При принятии создаётся запись в \passthrough{\lstinline!coach\_athlete\_relations!}.
+\end{enumerate}
+
+В первой версии у спортсмена может быть один тренер. Это ограничение задаётся уникальностью \passthrough{\lstinline!athlete\_id!} в таблице связей. Такое решение упрощает логику доступа: Training Service и Analytics Service могут однозначно определять, какой тренер отвечает за спортсмена.
+
+\subsubsection{Тренировочные группы}
+
+Тренер может создавать тренировочные группы и добавлять туда своих спортсменов. Группа используется для массового назначения тренировочного плана. Перед добавлением спортсмена в группу сервис проверяет, есть ли связь между этим спортсменом и тренером.
+
+User Service предоставляет следующие операции:
+
+\begin{itemize}
+\tightlist
+\item
+  создание группы;
+\item
+  получение списка групп;
+\item
+  получение деталей группы с участниками;
+\item
+  обновление названия группы;
+\item
+  удаление группы;
+\item
+  добавление спортсмена;
+\item
+  удаление спортсмена.
+\end{itemize}
+
+\subsubsection{Внутренние API}
+
+User Service предоставляет внутренние API для других сервисов:
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Endpoint
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Использование
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!GET /internal/users/\{userId\}!} & Получение профиля пользователя \\
+\passthrough{\lstinline!GET /internal/groups/\{groupId\}/members!} & Получение состава группы \\
+\passthrough{\lstinline!GET /internal/coach/\{coachId\}/has-athlete/\{athleteId\}!} & Проверка связи тренера и спортсмена \\
+\end{longtable}
+
+Эти API не предназначены для внешних клиентов. Они позволяют Training Service, Analytics Service и AI Service выполнять предметные проверки и получать необходимые данные.
+
+\subsection{Training Service}
+
+Training Service является центральным сервисом тренировочного процесса. Он использует базу \passthrough{\lstinline!training\_db!}.
+
+\subsubsection{Тренировочные планы}
+
+Тренировочный план содержит название, описание, дату и идентификатор тренера. План может быть назначен:
+
+\begin{itemize}
+\tightlist
+\item
+  одному или нескольким спортсменам по списку \passthrough{\lstinline!athlete\_ids!};
+\item
+  всем спортсменам группы через \passthrough{\lstinline!group\_id!};
+\item
+  комбинации группы и отдельных спортсменов.
+\end{itemize}
+
+Если указан \passthrough{\lstinline!group\_id!}, Training Service обращается к User Service и получает участников группы. Затем создаётся один тренировочный план и набор назначений для каждого спортсмена.
+
+\subsubsection{Назначения}
+
+Назначение представляет связь между тренировочным планом и конкретным спортсменом. В назначении хранятся:
+
+\begin{itemize}
+\tightlist
+\item
+  \passthrough{\lstinline!plan\_id!};
+\item
+  \passthrough{\lstinline!athlete\_id!};
+\item
+  \passthrough{\lstinline!coach\_id!};
+\item
+  имя и логин спортсмена;
+\item
+  имя и логин тренера;
+\item
+  статус;
+\item
+  время назначения;
+\item
+  время выполнения;
+\item
+  время архивации.
+\end{itemize}
+
+Денормализация имени и логина спортсмена используется для удобной фильтрации списков назначений без дополнительного запроса в User Service.
+
+Статусы назначений:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Статус & Значение \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!assigned!} & Задание назначено и ожидает отчёта \\
+\passthrough{\lstinline!completed!} & Спортсмен отправил отчёт \\
+\passthrough{\lstinline!archived!} & Тренер перенёс выполненное назначение в архив \\
+\end{longtable}
+
+\subsubsection{Просроченность задания}
+
+Просроченность вычисляется функцией \passthrough{\lstinline!ComputeIsOverdue!}. Задание считается просроченным, если:
+
+\begin{itemize}
+\tightlist
+\item
+  статус равен \passthrough{\lstinline!assigned!};
+\item
+  дата тренировки уже прошла.
+\end{itemize}
+
+Просроченность не хранится в базе данных как отдельное поле. Это уменьшает количество фоновых задач и исключает ситуацию, когда сохранённое значение устаревает.
+
+\subsubsection{Отчёты}
+
+Спортсмен может отправить отчёт только по своему назначению и только если назначение находится в статусе \passthrough{\lstinline!assigned!}. После создания отчёта статус назначения меняется на \passthrough{\lstinline!completed!}.
+
+Формат отчёта:
+
+\begin{lstlisting}
+{
+  "content": "Тренировка прошла хорошо, последние интервалы дались тяжело",
+  "duration_minutes": 75,
+  "perceived_effort": 7,
+  "max_heart_rate": 188,
+  "avg_heart_rate": 162,
+  "distance_km": 12.4
+}
+\end{lstlisting}
+
+Поля отчёта выбраны с учётом первой реализации для лёгкой атлетики. Они позволяют фиксировать как объективные показатели, так и субъективную оценку нагрузки.
+
+\subsubsection{Шаблоны тренировок}
+
+Тренер может создавать шаблоны тренировок. Шаблон содержит название и описание. Он используется для повторяющихся тренировок, чтобы тренеру не приходилось каждый раз вручную вводить одно и то же задание. При создании плана можно сохранить его как шаблон или использовать существующий шаблон как основу.
+
+\subsubsection{События Training Service}
+
+Training Service публикует события:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule\noalign{}
+Событие & Когда публикуется \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!coachlink.training.assigned!} & Создано назначение \\
+\passthrough{\lstinline!coachlink.training.deleted!} & Назначение удалено \\
+\passthrough{\lstinline!coachlink.report.submitted!} & Спортсмен отправил отчёт \\
+\end{longtable}
+
+Эти события используются Notification Service для создания уведомлений.
+
+\subsection{Notification Service}
+
+Notification Service подписан на события NATS JetStream и создаёт уведомления в базе \passthrough{\lstinline!notification\_db!}.
+
+\subsubsection{Обработка событий}
+
+Для каждого типа события создаётся отдельный durable consumer. Это позволяет сервису продолжить обработку после перезапуска и не потерять события.
+
+Примеры соответствия событий и уведомлений:
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule\noalign{}
+Событие & Получатель & Тип уведомления \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!connection.requested!} & Тренер & Новая заявка от спортсмена \\
+\passthrough{\lstinline!connection.accepted!} & Спортсмен & Заявка принята \\
+\passthrough{\lstinline!training.assigned!} & Спортсмен & Новое тренировочное задание \\
+\passthrough{\lstinline!report.submitted!} & Тренер & Новый отчёт \\
+\passthrough{\lstinline!group.athlete\_added!} & Спортсмен & Добавление в группу \\
+\end{longtable}
+
+Если уведомление успешно создано, сообщение подтверждается через \passthrough{\lstinline!Ack!}. Если произошла ошибка, сообщение отклоняется через \passthrough{\lstinline!Nak!}, чтобы оно могло быть обработано повторно.
+
+\subsubsection{API уведомлений}
+
+Notification Service предоставляет:
+
+\begin{itemize}
+\tightlist
+\item
+  получение списка уведомлений с пагинацией;
+\item
+  фильтрацию по признаку прочтения;
+\item
+  получение количества непрочитанных уведомлений;
+\item
+  пометку одного уведомления прочитанным;
+\item
+  пометку всех уведомлений прочитанными;
+\item
+  регистрацию FCM-токена устройства.
+\end{itemize}
+
+FCM-интеграция реализована как опциональная. Если credentials не настроены, push-доставка отключается, но серверные уведомления продолжают работать. Это важно для локальной разработки и тестирования без внешних Firebase-настроек.
+
+\subsection{Analytics Service}
+
+Analytics Service не хранит собственные данные. Он получает отчёты и агрегаты из Training Service через внутренние HTTP API.
+
+\subsubsection{Сводка спортсмена}
+
+Сводка включает:
+
+\begin{itemize}
+\tightlist
+\item
+  количество отчётов;
+\item
+  суммарную длительность;
+\item
+  среднюю длительность;
+\item
+  суммарную дистанцию;
+\item
+  среднюю воспринимаемую нагрузку;
+\item
+  средний пульс;
+\item
+  максимальный пульс;
+\item
+  количество назначений;
+\item
+  процент выполнения.
+\end{itemize}
+
+Эти показатели позволяют тренеру оценить объём и регулярность тренировок спортсмена.
+
+\subsubsection{Прогресс по периодам}
+
+Analytics Service группирует отчёты по неделям или месяцам. Для каждого периода рассчитываются:
+
+\begin{itemize}
+\tightlist
+\item
+  количество отчётов;
+\item
+  суммарная длительность;
+\item
+  средняя нагрузка;
+\item
+  средний пульс;
+\item
+  суммарная дистанция.
+\end{itemize}
+
+Группировка по периодам позволяет видеть динамику тренировочного процесса, а не только итоговые значения за всё время.
+
+\subsubsection{Обзор тренера}
+
+Для тренера сервис формирует обзор по его спортсменам: количество спортсменов, назначений, отчётов и процент выполнения. Такой endpoint нужен для быстрого понимания общей картины по группе.
+
+\subsection{AI Service}
+
+AI Service предоставляет одну публичную ручку:
+
+\begin{lstlisting}
+POST /api/v1/ai/athletes/{id}/recommendations
+\end{lstlisting}
+
+\subsubsection{Проверка доступа}
+
+Сервис доступен только пользователю с ролью \passthrough{\lstinline!coach!}. После получения запроса AI Service обращается к User Service и проверяет, связан ли указанный спортсмен с текущим тренером. Если связи нет, возвращается ошибка доступа.
+
+\subsubsection{Получение данных}
+
+После проверки доступа сервис получает из Analytics Service:
+
+\begin{itemize}
+\tightlist
+\item
+  сводную статистику спортсмена;
+\item
+  последние отчёты спортсмена.
+\end{itemize}
+
+Если отчётов нет, сервис возвращает ошибку недостатка данных. Это необходимо, потому что AI-рекомендация должна опираться на фактическую тренировочную историю, а не на пустой контекст.
+
+\subsubsection{Формирование prompt}
+
+Prompt формируется на русском языке. Он содержит:
+
+\begin{itemize}
+\tightlist
+\item
+  общую статистику спортсмена;
+\item
+  последние тренировки;
+\item
+  длительность;
+\item
+  дистанцию;
+\item
+  субъективную нагрузку;
+\item
+  показатели пульса;
+\item
+  комментарии спортсмена;
+\item
+  дополнительный контекст от тренера.
+\end{itemize}
+
+Количество отчётов ограничивается пятью. Типовой сценарий --- рекомендации по последним 3-5 отчётам. Это снижает размер prompt и ускоряет генерацию.
+
+\subsubsection{Генерация через Ollama}
+
+AI Service обращается к Ollama API:
+
+\begin{lstlisting}
+POST /api/chat
+\end{lstlisting}
+
+Используется модель \passthrough{\lstinline!gemma3:4b!}. Ответ возвращается тренеру в виде структуры:
+
+\begin{lstlisting}
+{
+  "athlete_id": "uuid",
+  "type": "recommendations",
+  "content": "Текст рекомендаций от LLM...",
+  "generated_at": "2026-04-13T12:00:00Z",
+  "model": "gemma3:4b"
+}
+\end{lstlisting}
+
+AI-модуль не является заменой тренеру. Он предоставляет вспомогательный текст, который тренер может использовать при принятии решения о корректировке нагрузки.
+
+\subsection{Примеры API-запросов}
+
+\subsubsection{Регистрация пользователя}
+
+\begin{lstlisting}
+{
+  "login": "runner-coach",
+  "email": "coach@example.com",
+  "password": "strong-password",
+  "full_name": "Иванов Иван Иванович",
+  "role": "coach"
+}
+\end{lstlisting}
+
+\subsubsection{Создание тренировочного плана}
+
+\begin{lstlisting}
+{
+  "title": "Интервальная тренировка",
+  "description": "6x400 м через 200 м трусцой, разминка 15 минут, заминка 10 минут",
+  "scheduled_date": "2026-04-30",
+  "athlete_ids": ["athlete-uuid"],
+  "save_as_template": true
+}
+\end{lstlisting}
+
+\subsubsection{Отправка отчёта}
+
+\begin{lstlisting}
+{
+  "content": "Выполнил все отрезки, последние два были тяжёлыми",
+  "duration_minutes": 70,
+  "perceived_effort": 8,
+  "max_heart_rate": 190,
+  "avg_heart_rate": 165,
+  "distance_km": 11.2
+}
+\end{lstlisting}
+
+\subsubsection{Получение AI-рекомендации}
+
+\begin{lstlisting}
+{
+  "context": "Подготовка к старту на 800 м через 2 месяца"
+}
+\end{lstlisting}
+
+\subsection{Тестирование}
+
+\subsubsection{Уровни тестирования}
+
+Для проверки backend используются несколько уровней тестирования.
+
+Unit-тесты проверяют бизнес-логику отдельных сервисов без запуска всей инфраструктуры. Такой подход позволяет быстро проверять правила доступа, обработку ошибок и вычисления.
+
+E2E smoke-тест проверяет основной пользовательский сценарий через HTTP API. Он нужен для быстрой проверки того, что основные сервисы работают совместно.
+
+Интеграционные тесты проверяют endpoint-группы через API Gateway. Они ближе всего к поведению реального внешнего клиента, потому что запросы проходят через тот же входной слой, что и мобильное приложение.
+
+\subsubsection{Unit-тесты}
+
+Unit-тесты покрывают:
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Сервис
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Что проверяется
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!training-service!} & Просроченность, доступ к заданиям, архивация, отправка отчётов, шаблоны \\
+\passthrough{\lstinline!notification-service!} & Регистрация FCM-токена, пагинация, отметка прочтения, создание уведомления \\
+\passthrough{\lstinline!analytics-service!} & Сводка, группировка по неделям/месяцам, сортировка, ошибки клиента \\
+\passthrough{\lstinline!ai-service!} & Успешная генерация, недостаток данных, ошибки Ollama, лимит отчётов, prompt \\
+\end{longtable}
+
+Команда запуска:
+
+\begin{lstlisting}[language=bash]
+make test-unit
+\end{lstlisting}
+
+Фактически подтверждённый результат: команда \passthrough{\lstinline!make test-unit!} выполнена успешно. Прошли unit-тесты \passthrough{\lstinline!ai-service!}, \passthrough{\lstinline!analytics-service!}, \passthrough{\lstinline!training-service!} и \passthrough{\lstinline!notification-service!}.
+
+\subsubsection{Компиляция интеграционных тестов}
+
+Для проверки актуальности интеграционного тестового пакета используется компиляция тестового бинарника:
+
+\begin{lstlisting}[language=bash]
+cd tests/integration
+go test -c
+\end{lstlisting}
+
+Фактически подтверждённый результат: интеграционный пакет компилируется. Это подтверждает, что тестовые функции согласованы с текущим набором endpoint-ов, в том числе с единственной реализованной AI-ручкой рекомендаций.
+
+\subsubsection{E2E и интеграционные тесты}
+
+Для полного запуска E2E и интеграционных тестов необходимо поднять платформу:
+
+\begin{lstlisting}[language=bash]
+make up
+make test-e2e
+make test-integration
+\end{lstlisting}
+
+Если эти команды не были выполнены в момент подготовки финального текста, в дипломе нельзя утверждать, что соответствующие тесты успешно пройдены. Допустимо указать, что тесты предусмотрены и описать их назначение, но результаты должны фиксироваться только после фактического запуска.
+
+\subsubsection{Таблица результатов}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 4\tabcolsep) * \real{0.3333}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 4\tabcolsep) * \real{0.3333}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Проверка
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Статус
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Комментарий
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+\passthrough{\lstinline!make test-unit!} & Успешно & Проверена бизнес-логика четырёх сервисов \\
+\passthrough{\lstinline!go test -c!} в \passthrough{\lstinline!tests/integration!} & Успешно & Интеграционный пакет компилируется \\
+\passthrough{\lstinline!make test-e2e!} & Не зафиксировано & Требует поднятой платформы \\
+\passthrough{\lstinline!make test-integration!} & Не зафиксировано & Требует поднятой платформы \\
+\end{longtable}
+
+\subsection{Выводы по главе 3}
+
+В третьей главе была рассмотрена реализация backend-платформы CoachLink. Реализованы сервисы, обеспечивающие регистрацию и авторизацию пользователей, управление профилями и связями, тренировочные группы, планы, назначения, отчёты, уведомления, аналитику и AI-рекомендации.
+
+Система построена вокруг единого API Gateway, который проверяет JWT и маршрутизирует запросы. Межсервисное взаимодействие реализовано через HTTP и NATS JetStream. Данные разделены по сервисам, что соответствует выбранной микросервисной архитектуре.
+
+Проведённая проверка показывает, что ключевая бизнес-логика покрыта unit-тестами, а интеграционный тестовый пакет согласован с текущим API. Для финальной версии работы необходимо дополнительно выполнить E2E и полный интеграционный прогон при поднятой платформе и зафиксировать результаты.
