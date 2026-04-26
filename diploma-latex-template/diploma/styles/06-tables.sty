@@ -43,6 +43,21 @@
     singlelinecheck=false,
 }
 
+% Локальная настройка размера шрифта таблицы в пунктах:
+% \TableFontPt{12}                      -> 12pt, межстрочный 14.4pt
+% \TableFontPtLeading{12}{15}           -> 12pt, межстрочный 15pt
+% Применять локально для конкретной таблицы в группе:
+% \begingroup
+% \TableFontPt{12}
+% \begin{longtable} ... \end{longtable}
+% \endgroup
+\newcommand{\TableFontPt}[1]{%
+    \fontsize{#1pt}{\dimexpr #1pt*6/5\relax}\selectfont%
+}
+\newcommand{\TableFontPtLeading}[2]{%
+    \fontsize{#1pt}{#2pt}\selectfont%
+}
+
 % 6.6.4 Таблицы, за исключением таблиц приложений, следует нумеровать 
 % арабскими цифрами сквозной нумерацией.
 % Таблицы каждого приложения обозначаются отдельной нумерацией арабскими цифрами 

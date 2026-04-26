@@ -35,37 +35,11 @@
 
 API Gateway проверяет авторизацию и перенаправляет запросы к backend-сервисам. Сервисы реализованы на Go и взаимодействуют между собой через HTTP и NATS JetStream. Для хранения данных используется PostgreSQL. Для генерации AI-рекомендаций используется локальный LLM-сервер Ollama.
 
-Компонентная схема:
-
-\begin{lstlisting}
-flowchart TD
-    Client[External REST client] --> Gateway[API Gateway]
-
-    Gateway --> Auth[Auth Service]
-    Gateway --> User[User Service]
-    Gateway --> Training[Training Service]
-    Gateway --> Notification[Notification Service]
-    Gateway --> Analytics[Analytics Service]
-    Gateway --> AI[AI Service]
-
-    Auth --> AuthDB[(auth_db)]
-    User --> UserDB[(user_db)]
-    Training --> TrainingDB[(training_db)]
-    Notification --> NotificationDB[(notification_db)]
-
-    Auth -- user.registered --> NATS[NATS JetStream]
-    User -- connection/group events --> NATS
-    Training -- training/report events --> NATS
-    NATS --> User
-    NATS --> Notification
-
-    Training --> User
-    Analytics --> Training
-    Analytics --> User
-    AI --> User
-    AI --> Analytics
-    AI --> Ollama[Ollama]
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/components-sheme_cropped.pdf}
+  \caption{Компонентная схема backend-платформы}
+  \label{fig:diagram-backend}
+\end{figure}
 
 В такой архитектуре API Gateway не содержит предметной бизнес-логики. Его задача --- принять запрос, проверить JWT, добавить служебные заголовки и передать запрос в нужный сервис. Предметные правила остаются внутри соответствующих сервисов.
 
@@ -311,21 +285,22 @@ POST /api/v1/ai/athletes/{id}/recommendations
 
 Auth Service использует две основные таблицы:
 
-\begin{longtable}[]{@{}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
-\toprule\noalign{}
+\begin{longtable}[]{|
+  >{\raggedright\arraybackslash}p{(\columnwidth - 5\tabcolsep) * \real{0.4700}}|
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.4700}}|}
+\caption{Таблицы Auth Service и их назначение}\label{tab:auth-db-tables}\\
+\hline
 \begin{minipage}[b]{\linewidth}\raggedright
 Таблица
 \end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
 Назначение
 \end{minipage} \\
-\midrule\noalign{}
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!users!} & Учётные данные пользователя, роль и пароль в виде bcrypt-хеша \\
-\passthrough{\lstinline!refresh\_tokens!} & Хеши refresh-токенов и срок их действия \\
+\passthrough{\lstinline!users!} & Учётные данные пользователя, роль и пароль в виде bcrypt-хеша \\ \hline
+\passthrough{\lstinline!refresh\_tokens!} & Хеши refresh-токенов и срок их действия \\ \hline
 \end{longtable}
 
 Таблица \passthrough{\lstinline!users!} содержит логин, email, ФИО, роль, хеш пароля и временные метки. Роль ограничена значениями \passthrough{\lstinline!coach!} и \passthrough{\lstinline!athlete!}. Таблица \passthrough{\lstinline!refresh\_tokens!} связана с пользователем и позволяет отзывать refresh-токены.
@@ -334,24 +309,25 @@ Auth Service использует две основные таблицы:
 
 User Service использует следующие таблицы:
 
-\begin{longtable}[]{@{}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.5000}}@{}}
-\toprule\noalign{}
+\begin{longtable}[]{|
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.4700}}|
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.4700}}|}
+\caption{Таблицы User Service и их назначение}\label{tab:user-db-tables}\\
+\hline
 \begin{minipage}[b]{\linewidth}\raggedright
 Таблица
 \end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
 Назначение
 \end{minipage} \\
-\midrule\noalign{}
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!user\_profiles!} & Профили пользователей, синхронизированные из Auth Service \\
-\passthrough{\lstinline!connection\_requests!} & Заявки спортсмена тренеру \\
-\passthrough{\lstinline!coach\_athlete\_relations!} & Активные связи тренер-спортсмен \\
-\passthrough{\lstinline!training\_groups!} & Тренировочные группы тренера \\
-\passthrough{\lstinline!training\_group\_members!} & Состав тренировочных групп \\
+\passthrough{\lstinline!user\_profiles!} & Профили пользователей, синхронизированные из Auth Service \\ \hline
+\passthrough{\lstinline!connection\_requests!} & Заявки спортсмена тренеру \\ \hline
+\passthrough{\lstinline!coach\_athlete\_relations!} & Активные связи тренер-спортсмен \\ \hline
+\passthrough{\lstinline!training\_groups!} & Тренировочные группы тренера \\ \hline
+\passthrough{\lstinline!training\_group\_members!} & Состав тренировочных групп \\ \hline
 \end{longtable}
 
 Разделение \passthrough{\lstinline!users!} и \passthrough{\lstinline!user\_profiles!} отражает разделение ответственности сервисов. Auth Service хранит учётные данные, User Service --- доменную информацию для поиска, связей и групп.
@@ -360,17 +336,18 @@ User Service использует следующие таблицы:
 
 Training Service использует таблицы:
 
-\begin{longtable}[]{@{}ll@{}}
-\toprule\noalign{}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.42\columnwidth}|>{\raggedright\arraybackslash}p{0.46\columnwidth}|}
+\caption{Таблицы Training Service и их назначение}\label{tab:training-db-tables}\\
+\hline
 Таблица & Назначение \\
-\midrule\noalign{}
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!training\_plans!} & Общая информация о тренировочном плане \\
-\passthrough{\lstinline!training\_assignments!} & Назначение плана конкретному спортсмену \\
-\passthrough{\lstinline!training\_reports!} & Отчёт спортсмена по назначению \\
-\passthrough{\lstinline!training\_templates!} & Шаблоны тренировок тренера \\
+\passthrough{\lstinline!training\_plans!} & Общая информация о тренировочном плане \\ \hline
+\passthrough{\lstinline!training\_assignments!} & Назначение плана конкретному спортсмену \\ \hline
+\passthrough{\lstinline!training\_reports!} & Отчёт спортсмена по назначению \\ \hline
+\passthrough{\lstinline!training\_templates!} & Шаблоны тренировок тренера \\ \hline
 \end{longtable}
 
 Отдельное хранение плана и назначения необходимо для групповых тренировок. Один план может быть создан тренером один раз, а затем назначен нескольким спортсменам. Отчёт связан с назначением, а не только с планом, потому что каждый спортсмен выполняет тренировку индивидуально и отправляет собственную обратную связь.
@@ -379,33 +356,27 @@ Training Service использует таблицы:
 
 Notification Service хранит:
 
-\begin{longtable}[]{@{}ll@{}}
-\toprule\noalign{}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.42\columnwidth}|>{\raggedright\arraybackslash}p{0.46\columnwidth}|}
+\caption{Таблицы Notification Service и их назначение}\label{tab:notification-db-tables}\\
+\hline
 Таблица & Назначение \\
-\midrule\noalign{}
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!notifications!} & Уведомления пользователей \\
-\passthrough{\lstinline!device\_tokens!} & FCM-токены устройств \\
+\passthrough{\lstinline!notifications!} & Уведомления пользователей \\ \hline
+\passthrough{\lstinline!device\_tokens!} & FCM-токены устройств \\ \hline
 \end{longtable}
 
 В уведомлении хранится тип, заголовок, текст, дополнительные данные в JSONB, признак прочтения и дата создания. JSONB-поле позволяет добавлять к уведомлению контекст: идентификатор заявки, задания или группы.
 
 \subsubsection{ER-диаграмма}
 
-\begin{lstlisting}
-erDiagram
-    USER_PROFILE ||--o{ CONNECTION_REQUEST : "athlete"
-    USER_PROFILE ||--o{ CONNECTION_REQUEST : "coach"
-    USER_PROFILE ||--o{ COACH_ATHLETE_RELATION : "coach"
-    USER_PROFILE ||--o{ COACH_ATHLETE_RELATION : "athlete"
-    USER_PROFILE ||--o{ TRAINING_GROUP : "owns"
-    TRAINING_GROUP ||--o{ TRAINING_GROUP_MEMBER : "contains"
-    TRAINING_PLAN ||--o{ TRAINING_ASSIGNMENT : "creates"
-    TRAINING_ASSIGNMENT ||--o| TRAINING_REPORT : "has"
-    USER_PROFILE ||--o{ NOTIFICATION : "receives"
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/ER-diagram_cropped.pdf}
+  \caption{ER-диаграмма}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsection{Межсервисное взаимодействие}
 
@@ -440,166 +411,101 @@ erDiagram
 
 Список ключевых событий:
 
-\begin{longtable}[]{@{}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2500}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2500}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2500}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2500}}@{}}
-\toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-Событие
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Источник
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Получатель
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Назначение
-\end{minipage} \\
-\midrule\noalign{}
+\begin{longtable}{|
+  >{\raggedright\arraybackslash}p{0.34\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.16\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.18\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.20\columnwidth}|}
+\caption{Ключевые события NATS JetStream в backend-платформе}\label{tab:nats-key-events}\\
+\hline
+Событие & Источник & Получатель & Назначение \\
+\hline
+\endfirsthead
+\caption[]{Продолжение таблицы \thetable}\\
+\hline
+Событие & Источник & Получатель & Назначение \\
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!coachlink.user.registered!} & Auth Service & User Service & Создание профиля \\
-\passthrough{\lstinline!coachlink.connection.requested!} & User Service & Notification Service & Уведомление тренера \\
-\passthrough{\lstinline!coachlink.connection.accepted!} & User Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.connection.rejected!} & User Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.group.athlete\_added!} & User Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.group.athlete\_removed!} & User Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.training.assigned!} & Training Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.training.deleted!} & Training Service & Notification Service & Уведомление спортсмена \\
-\passthrough{\lstinline!coachlink.report.submitted!} & Training Service & Notification Service & Уведомление тренера \\
+\path|coachlink.user.registered| & Auth Service & User Service & Создание профиля \\ \hline
+\path|coachlink.connection.requested| & User Service & Notification Service & Уведомление тренера \\ \hline
+\path|coachlink.connection.accepted| & User Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.connection.rejected| & User Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.group.athlete_added| & User Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.group.athlete_removed| & User Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.training.assigned| & Training Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.training.deleted| & Training Service & Notification Service & Уведомление спортсмена \\ \hline
+\path|coachlink.report.submitted| & Training Service & Notification Service & Уведомление тренера \\ \hline
 \end{longtable}
 
 \subsection{Проектирование ключевых сценариев}
 
 \subsubsection{Регистрация пользователя}
 
-\begin{lstlisting}
-sequenceDiagram
-    participant Client as External Client
-    participant Gateway as API Gateway
-    participant Auth as Auth Service
-    participant NATS as NATS JetStream
-    participant User as User Service
-
-    Client->>Gateway: POST /api/v1/auth/register
-    Gateway->>Auth: forward request
-    Auth->>Auth: validate login, email, role
-    Auth->>Auth: bcrypt password
-    Auth->>Auth: save user
-    Auth->>NATS: publish user.registered
-    NATS->>User: deliver event
-    User->>User: create profile
-    Auth-->>Gateway: access_token, refresh_token
-    Gateway-->>Client: auth response
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/user-registration_cropped.pdf}
+  \caption{Регистрация пользователя}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsubsection{Создание связи тренер-спортсмен}
 
-\begin{lstlisting}
-sequenceDiagram
-    participant Athlete as Athlete
-    participant Gateway as API Gateway
-    participant User as User Service
-    participant NATS as NATS JetStream
-    participant Notification as Notification Service
-    participant Coach as Coach
-
-    Athlete->>Gateway: POST /api/v1/connections/request
-    Gateway->>User: send request
-    User->>User: validate athlete role and coach profile
-    User->>NATS: publish connection.requested
-    NATS->>Notification: create notification for coach
-    Coach->>Gateway: PUT /api/v1/connections/requests/{id}/accept
-    Gateway->>User: accept request
-    User->>User: create relation
-    User->>NATS: publish connection.accepted
-    NATS->>Notification: create notification for athlete
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/user-coach_cropped.pdf}
+  \caption{Создание связи тренер-спортсмен}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsubsection{Назначение тренировки группе}
 
-\begin{lstlisting}
-sequenceDiagram
-    participant Coach as Coach
-    participant Gateway as API Gateway
-    participant Training as Training Service
-    participant User as User Service
-    participant NATS as NATS JetStream
-    participant Notification as Notification Service
-
-    Coach->>Gateway: POST /api/v1/training/plans
-    Gateway->>Training: create plan with group_id
-    Training->>User: GET /internal/groups/{id}/members
-    User-->>Training: group members
-    Training->>Training: create plan
-    Training->>Training: create assignments
-    Training->>NATS: publish training.assigned per athlete
-    NATS->>Notification: create notifications
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/trenirovka-grupe_cropped.pdf}
+  \caption{Назначение тренировки групп}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsubsection{Отправка отчёта}
 
-\begin{lstlisting}
-sequenceDiagram
-    participant Athlete as Athlete
-    participant Gateway as API Gateway
-    participant Training as Training Service
-    participant NATS as NATS JetStream
-    participant Notification as Notification Service
-
-    Athlete->>Gateway: POST /api/v1/training/assignments/{id}/report
-    Gateway->>Training: submit report
-    Training->>Training: verify assignment owner
-    Training->>Training: save report
-    Training->>Training: set assignment completed
-    Training->>NATS: publish report.submitted
-    NATS->>Notification: create notification for coach
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/report-sending_cropped.pdf}
+  \caption{Отправка отчёта}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsubsection{Получение AI-рекомендации}
 
-\begin{lstlisting}
-sequenceDiagram
-    participant Coach as Coach
-    participant Gateway as API Gateway
-    participant AI as AI Service
-    participant User as User Service
-    participant Analytics as Analytics Service
-    participant Ollama as Ollama
-
-    Coach->>Gateway: POST /api/v1/ai/athletes/{id}/recommendations
-    Gateway->>AI: request with user headers
-    AI->>User: check coach-athlete relation
-    User-->>AI: relation exists
-    AI->>Analytics: get summary and reports
-    Analytics-->>AI: stats and latest reports
-    AI->>AI: build Russian prompt
-    AI->>Ollama: POST /api/chat
-    Ollama-->>AI: generated text
-    AI-->>Gateway: AIResponse
-    Gateway-->>Coach: recommendations
-\end{lstlisting}
+\begin{figure}[H]
+  \includegraphics[page=1,width=\textwidth]{inc/AI-recomendation_cropped.pdf}
+  \caption{Получение AI-рекомендации}
+  \label{fig:diagram-backend}
+\end{figure}
 
 \subsection{Проектирование публичного API}
 
 Публичный API разделён на группы по предметным областям:
 
-\begin{longtable}[]{@{}ll@{}}
-\toprule\noalign{}
+\begin{longtable}{|>{\raggedright\arraybackslash}p{0.42\columnwidth}|>{\raggedright\arraybackslash}p{0.46\columnwidth}|}
+\caption{Группы публичного API CoachLink}\label{tab:public-api-groups}\\
+\hline
 Группа & Назначение \\
-\midrule\noalign{}
+\hline
+\endfirsthead
+\caption[]{Продолжение таблицы \thetable}\\
+\hline
+Группа & Назначение \\
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-\passthrough{\lstinline!/api/v1/auth/*!} & Регистрация, вход, обновление и отзыв токенов \\
-\passthrough{\lstinline!/api/v1/users/*!} & Профиль текущего пользователя и поиск \\
-\passthrough{\lstinline!/api/v1/connections/*!} & Заявки и связи тренер-спортсмен \\
-\passthrough{\lstinline!/api/v1/groups/*!} & Тренировочные группы \\
-\passthrough{\lstinline!/api/v1/training/*!} & Планы, назначения, отчёты, шаблоны \\
-\passthrough{\lstinline!/api/v1/notifications/*!} & Уведомления \\
-\passthrough{\lstinline!/api/v1/analytics/*!} & Аналитика тренировок \\
-\passthrough{\lstinline!/api/v1/ai/*!} & AI-рекомендации \\
+\passthrough{\lstinline!/api/v1/auth/*!} & Регистрация, вход, обновление и отзыв токенов \\ \hline
+\passthrough{\lstinline!/api/v1/users/*!} & Профиль текущего пользователя и поиск \\ \hline
+\passthrough{\lstinline!/api/v1/connections/*!} & Заявки и связи тренер-спортсмен \\ \hline
+\passthrough{\lstinline!/api/v1/groups/*!} & Тренировочные группы \\ \hline
+\passthrough{\lstinline!/api/v1/training/*!} & Планы, назначения, отчёты, шаблоны \\ \hline
+\passthrough{\lstinline!/api/v1/notifications/*!} & Уведомления \\ \hline
+\passthrough{\lstinline!/api/v1/analytics/*!} & Аналитика тренировок \\ \hline
+\passthrough{\lstinline!/api/v1/ai/*!} & AI-рекомендации \\ \hline
 \end{longtable}
 
 Такое разделение упрощает маршрутизацию на уровне API Gateway и делает API понятным для внешних клиентов.

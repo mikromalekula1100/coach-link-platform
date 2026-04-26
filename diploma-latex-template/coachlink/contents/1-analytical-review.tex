@@ -103,42 +103,34 @@
 
 Для выбора направления разработки сравним рассмотренные подходы по критериям, важным для автоматизации тренировочного процесса.
 
-\begin{longtable}[]{@{}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}
-  >{\raggedright\arraybackslash}p{(\columnwidth - 10\tabcolsep) * \real{0.1667}}@{}}
-\toprule\noalign{}
-\begin{minipage}[b]{\linewidth}\raggedright
-Критерий
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Мессенджеры
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Электронные таблицы
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Спортивные трекеры
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-Закрытые платформы
-\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
-CoachLink backend
-\end{minipage} \\
-\midrule\noalign{}
+\begingroup
+\TableFontPt{12}
+\begin{longtable}{|
+  >{\raggedright\arraybackslash}p{0.18\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.13\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.13\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.14\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.13\columnwidth}|
+  >{\raggedright\arraybackslash}p{0.13\columnwidth}|}
+\caption{Сравнение подходов к организации взаимодействия тренера и спортсмена}\label{tab:approach-comparison}\\
+\hline
+Критерий & Мессендж. & Эл.\ табл. & Трекеры & Закрытые\linebreak платформы & CoachLink \\
+\hline
 \endhead
-\bottomrule\noalign{}
+\hline
 \endlastfoot
-Единый формат отчётов & Нет & Частично & Да, для активности & Да & Да \\
-Связь отчёта с заданием & Нет & Частично & Ограниченно & Да & Да \\
-Групповые назначения & Частично & Частично & Ограниченно & Да & Да \\
-Роли тренера и спортсмена & Нет & Ограниченно & Частично & Да & Да \\
-Уведомления о событиях & Да, но не предметные & Нет & Да & Да & Да \\
-Хранение истории & Да, но неструктурированно & Да & Да & Да & Да \\
-Аналитика & Нет & Ограниченная & Да, по активности & Да & Да \\
-Открытость API & Нет & Ограниченно & Зависит от сервиса & Зависит от сервиса & Да \\
-Возможность доработки & Низкая & Средняя & Низкая & Низкая или средняя & Высокая \\
-Самостоятельное развёртывание & Нет & Частично & Нет & Обычно нет & Да \\
+Единый формат отчётов & Нет & Частично & Да, для активности & Да & Да \\ \hline
+Связь отчёта с заданием & Нет & Частично & Ограниченно & Да & Да \\ \hline
+Групповые назначения & Частично & Частично & Ограниченно & Да & Да \\ \hline
+Роли тренера и спортсмена & Нет & Ограниченно & Частично & Да & Да \\ \hline
+Уведомления о событиях & Да, но не профильные & Нет & Да & Да & Да \\ \hline
+Хранение истории & Да, в разном формате & Да & Да & Да & Да \\ \hline
+Аналитика & Нет & Базовая & Да, по активности & Да & Да \\ \hline
+Открытость API & Нет & Ограниченно & Зависит от сервиса & Зависит от сервиса & Да \\ \hline
+Возможность доработки & Низкая & Средняя & Низкая & Низк./сред. & Высокая \\ \hline
+Самостоятельное\linebreak развёртывание & Нет & Частично & Нет & Обычно нет & Да \\ \hline
 \end{longtable}
+\endgroup
 
 Из таблицы видно, что ни один из распространённых подходов полностью не удовлетворяет требованиям открытой backend-платформы. Мессенджеры и таблицы удобны как вспомогательные инструменты, но не обеспечивают предметную модель. Спортивные трекеры полезны как источник данных, но не покрывают весь процесс взаимодействия. Закрытые платформы функциональны, но ограничены с точки зрения открытости и самостоятельного развития.
 
