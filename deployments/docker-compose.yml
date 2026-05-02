@@ -198,15 +198,6 @@ services:
       - analytics-service
       - ai-service
 
-  web:
-    build:
-      context: ..
-      dockerfile: services/web/Dockerfile
-    ports:
-      - "3000:80"
-    depends_on:
-      - api-gateway
-
   integration-test:
     build:
       context: ../tests/integration
@@ -227,7 +218,39 @@ services:
     ports:
       - "8090:8080"
 
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api-gateway
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      # Anonymous admin access so the dashboard opens with zero clicks.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+
 volumes:
   postgres_data:
   nats_data:
   ollama_data:
+  prometheus_data:
+  grafana_data:

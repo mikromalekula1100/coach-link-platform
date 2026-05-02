@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -24,15 +25,20 @@ func (m *mockPublisher) Publish(_ string, _ []byte, _ ...nats.PubOpt) (*nats.Pub
 }
 
 // ── Mock: UserServiceClient ────────────────────
+// Fields let individual tests control returned group members / errors.
+// Zero value behaves like the original always-succeeds stub.
 
-type mockUserClient struct{}
+type mockUserClient struct {
+	groupMembers    []client.GroupMemberInfo
+	groupMembersErr error
+}
 
-func (m *mockUserClient) GetUserByID(_ context.Context, _ string) (*client.GroupMemberInfo, error) {
-	return &client.GroupMemberInfo{FullName: "Test User", Login: "test"}, nil
+func (m *mockUserClient) GetUserByID(_ context.Context, id string) (*client.GroupMemberInfo, error) {
+	return &client.GroupMemberInfo{AthleteID: id, FullName: "Test User", Login: "test"}, nil
 }
 
 func (m *mockUserClient) GetGroupMembers(_ context.Context, _ string) ([]client.GroupMemberInfo, error) {
-	return nil, nil
+	return m.groupMembers, m.groupMembersErr
 }
 
 // ── Mock: TrainingRepository ───────────────────
@@ -56,6 +62,12 @@ type mockRepo struct {
 	createReportErr error
 	updateTmplErr   error
 	deleteTmplErr   error
+
+	// Call recorders for CreatePlan flow.
+	createdPlans       int
+	createdAssignments int
+	assignedAthleteIDs []string
+	createdTemplates   int
 }
 
 func (m *mockRepo) GetAssignmentByID(_ context.Context, _ string) (*model.AssignmentRow, error) {
@@ -89,12 +101,20 @@ func (m *mockRepo) DeleteTemplate(_ context.Context, _ string) error {
 	return m.deleteTmplErr
 }
 
-// Unused in these tests — no-op implementations.
-func (m *mockRepo) CreatePlan(_ context.Context, _ *model.TrainingPlan) error { return nil }
+func (m *mockRepo) CreatePlan(_ context.Context, p *model.TrainingPlan) error {
+	m.createdPlans++
+	p.ID = "plan-1"
+	return nil
+}
 func (m *mockRepo) GetGroupPlans(_ context.Context, _, _ string, _ bool, _, _ int) ([]model.GroupPlanRow, int, error) {
 	return nil, 0, nil
 }
-func (m *mockRepo) CreateAssignment(_ context.Context, _ *model.TrainingAssignment) error { return nil }
+func (m *mockRepo) CreateAssignment(_ context.Context, a *model.TrainingAssignment) error {
+	m.createdAssignments++
+	a.ID = "assign-" + a.AthleteID
+	m.assignedAthleteIDs = append(m.assignedAthleteIDs, a.AthleteID)
+	return nil
+}
 func (m *mockRepo) GetCoachAssignments(_ context.Context, _ string, _ model.AssignmentFilter) ([]model.AssignmentRow, int, error) {
 	return nil, 0, nil
 }
@@ -107,7 +127,11 @@ func (m *mockRepo) GetArchivedAssignments(_ context.Context, _ string, _ model.A
 func (m *mockRepo) GetTemplates(_ context.Context, _, _ string, _, _ int) ([]model.TrainingTemplate, int, error) {
 	return nil, 0, nil
 }
-func (m *mockRepo) CreateTemplate(_ context.Context, _ *model.TrainingTemplate) error { return nil }
+func (m *mockRepo) CreateTemplate(_ context.Context, t *model.TrainingTemplate) error {
+	m.createdTemplates++
+	t.ID = "tmpl-1"
+	return nil
+}
 func (m *mockRepo) GetReportsByAthleteID(_ context.Context, _, _, _ string) ([]model.ReportWithPlan, error) {
 	return nil, nil
 }
@@ -125,6 +149,12 @@ func (m *mockRepo) GetCoachOverviewStats(_ context.Context, _ string) (*model.Co
 
 func newSvc(repo service.TrainingRepository) *service.Service {
 	return service.New(repo, &mockPublisher{}, zerolog.Nop(), &mockUserClient{})
+}
+
+// newSvcWithClient lets CreatePlan tests inject a user client that returns
+// specific group members.
+func newSvcWithClient(repo service.TrainingRepository, uc service.UserServiceClient) *service.Service {
+	return service.New(repo, &mockPublisher{}, zerolog.Nop(), uc)
 }
 
 func assignedRow(coachID, athleteID string, scheduledDate time.Time) *model.AssignmentRow {
@@ -382,4 +412,150 @@ func TestDeleteAssignment_NotFound_Returns404(t *testing.T) {
 	se, ok := service.IsServiceError(err)
 	require.True(t, ok)
 	assert.Equal(t, 404, se.Status)
+}
+
+// ── CreatePlan ─────────────────────────────────
+
+func planReq(date string, athleteIDs []string) model.CreateTrainingPlanRequest {
+	return model.CreateTrainingPlanRequest{
+		Title:         "Interval Session",
+		Description:   "8x400m",
+		ScheduledDate: date,
+		AthleteIDs:    athleteIDs,
+	}
+}
+
+func TestCreatePlan_NoAthletesNoGroup_Returns400(t *testing.T) {
+	svc := newSvc(&mockRepo{})
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", planReq("2026-07-01", nil))
+	require.Error(t, err)
+
+	se, ok := service.IsServiceError(err)
+	require.True(t, ok)
+	assert.Equal(t, 400, se.Status)
+}
+
+func TestCreatePlan_InvalidDate_Returns400(t *testing.T) {
+	svc := newSvc(&mockRepo{})
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", planReq("01-07-2026", []string{"a1"}))
+	require.Error(t, err)
+
+	se, ok := service.IsServiceError(err)
+	require.True(t, ok)
+	assert.Equal(t, 400, se.Status)
+}
+
+func TestCreatePlan_MultipleAthletes_CreatesAssignmentEach(t *testing.T) {
+	repo := &mockRepo{}
+	svc := newSvc(repo)
+
+	resp, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach",
+		planReq("2026-07-01", []string{"a1", "a2", "a3"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, repo.createdPlans, "exactly one plan created")
+	assert.Equal(t, 3, repo.createdAssignments, "one assignment per athlete")
+	assert.ElementsMatch(t, []string{"a1", "a2", "a3"}, repo.assignedAthleteIDs)
+	assert.Len(t, resp.Assignments, 3)
+}
+
+func TestCreatePlan_DuplicateAthleteIDs_Deduplicated(t *testing.T) {
+	repo := &mockRepo{}
+	svc := newSvc(repo)
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach",
+		planReq("2026-07-01", []string{"a1", "a1", "a2"}))
+	require.NoError(t, err)
+
+	// athleteMap de-duplicates by ID, so 2 distinct assignments, not 3.
+	assert.Equal(t, 2, repo.createdAssignments)
+	assert.ElementsMatch(t, []string{"a1", "a2"}, repo.assignedAthleteIDs)
+}
+
+func TestCreatePlan_GroupExpandsToMembers(t *testing.T) {
+	repo := &mockRepo{}
+	uc := &mockUserClient{groupMembers: []client.GroupMemberInfo{
+		{AthleteID: "m1", FullName: "Member One", Login: "m1"},
+		{AthleteID: "m2", FullName: "Member Two", Login: "m2"},
+	}}
+	svc := newSvcWithClient(repo, uc)
+
+	groupID := "group-1"
+	req := model.CreateTrainingPlanRequest{
+		Title: "Group Plan", Description: "tempo run",
+		ScheduledDate: "2026-07-01", GroupID: &groupID,
+	}
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 2, repo.createdAssignments, "one assignment per group member")
+	assert.ElementsMatch(t, []string{"m1", "m2"}, repo.assignedAthleteIDs)
+}
+
+func TestCreatePlan_GroupMembersFetchFails_Returns400(t *testing.T) {
+	repo := &mockRepo{}
+	uc := &mockUserClient{groupMembersErr: errors.New("user service unavailable")}
+	svc := newSvcWithClient(repo, uc)
+
+	groupID := "group-1"
+	req := model.CreateTrainingPlanRequest{
+		Title: "Group Plan", Description: "tempo run",
+		ScheduledDate: "2026-07-01", GroupID: &groupID,
+	}
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", req)
+	require.Error(t, err)
+
+	se, ok := service.IsServiceError(err)
+	require.True(t, ok)
+	assert.Equal(t, 400, se.Status)
+}
+
+func TestCreatePlan_SaveAsTemplate_CreatesTemplate(t *testing.T) {
+	repo := &mockRepo{}
+	svc := newSvc(repo)
+
+	req := planReq("2026-07-01", []string{"a1"})
+	req.SaveAsTemplate = true
+
+	resp, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", req)
+	require.NoError(t, err)
+
+	assert.Equal(t, 1, repo.createdTemplates, "template persisted when save_as_template is true")
+	require.NotNil(t, resp.Template)
+	assert.Equal(t, "Interval Session", resp.Template.Title)
+}
+
+func TestCreatePlan_NoTemplate_WhenFlagFalse(t *testing.T) {
+	repo := &mockRepo{}
+	svc := newSvc(repo)
+
+	resp, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach",
+		planReq("2026-07-01", []string{"a1"}))
+	require.NoError(t, err)
+
+	assert.Equal(t, 0, repo.createdTemplates)
+	assert.Nil(t, resp.Template)
+}
+
+func TestCreatePlan_TemplateWrongCoach_Returns403(t *testing.T) {
+	tmpl := &model.TrainingTemplate{ID: "t1", CoachID: "other-coach", Title: "X", Description: "Y"}
+	repo := &mockRepo{template: tmpl}
+	svc := newSvc(repo)
+
+	templateID := "t1"
+	req := model.CreateTrainingPlanRequest{
+		Title: "From Template", Description: "desc",
+		ScheduledDate: "2026-07-01", AthleteIDs: []string{"a1"}, TemplateID: &templateID,
+	}
+
+	_, err := svc.CreatePlan(context.Background(), "coach-1", "Coach", "coach", req)
+	require.Error(t, err)
+
+	se, ok := service.IsServiceError(err)
+	require.True(t, ok)
+	assert.Equal(t, 403, se.Status)
 }

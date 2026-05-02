@@ -25,8 +25,13 @@
 | `make clean`          | Полный сброс: остановить, удалить volumes, пересобрать|
 | `make swagger`        | Открыть Swagger UI в браузере                         |
 | `make test-unit`      | Юнит-тесты бизнес-логики (Go, без Docker)             |
+| `make cover`          | Реальное покрытие юнит-тестами по сервисам            |
 | `make test-e2e`       | Запустить E2E smoke-тест (bash, только happy path)    |
 | `make test-integration` | Запустить интеграционные тесты (Go, требует make up) |
+| `make demo`           | Живая демонстрация с реальным выводом AI (требует make up) |
+| `make traffic`        | Сгенерировать нагрузку для наполнения дашборда метрик |
+| `make grafana`        | Открыть дашборд метрик Grafana                        |
+| `make prometheus`     | Открыть страницу targets Prometheus                   |
 
 ## Первый запуск
 
@@ -71,6 +76,8 @@ make test-e2e
 | PostgreSQL           | 5432 | База данных                        |
 | NATS                 | 4222 | Брокер сообщений                   |
 | Redis                | 6379 | Кеш                               |
+| Prometheus           | 9090 | Сбор метрик (scrape каждые 10 c)   |
+| Grafana              | 3001 | Дашборд метрик (анонимный вход)    |
 
 ## Тестирование
 
@@ -78,9 +85,20 @@ make test-e2e
 
 | Команда | Что проверяет | Кол-во тестов | Нужен Docker |
 |---------|---------------|---------------|--------------|
-| `make test-unit` | Бизнес-логика каждого сервиса в изоляции | 52 теста | **Нет** |
-| `make test-e2e` | Один happy-path сценарий (bash-скрипт) | ~17 шагов | Да |
+| `make test-unit` | Бизнес-логика каждого сервиса в изоляции | 112 тестов | **Нет** |
+| `make test-e2e` | Один happy-path сценарий (bash-скрипт) | ~19 шагов | Да |
 | `make test-integration` | Все эндпоинты через API Gateway (Go) | ~96 тестов | Да |
+
+Реальное покрытие юнит-тестами (слой бизнес-логики) — выводится командой `make cover`:
+
+| Сервис | service-слой | handler-слой | Тестов |
+|--------|:---:|:---:|:---:|
+| ai-service | 85.5 % | — | 10 |
+| analytics-service | 80.6 % | — | 11 |
+| auth-service | 70.1 % | 73.8 % | 23 |
+| notification-service | 64.6 % | — | 9 |
+| training-service | 56.6 % | — | 31 |
+| user-service | 12.7 % | 31.0 % | 28 |
 
 ### Юнит-тесты (`make test-unit`)
 
@@ -90,16 +108,16 @@ make test-e2e
 make test-unit
 ```
 
-Можно запустить тесты отдельного сервиса:
+Можно запустить тесты отдельного сервиса (все 6 сервисов собираются локально без Docker):
 
 ```bash
-cd services/ai-service       && go test ./internal/service/... -v
-cd services/analytics-service && go test ./internal/service/... -v
-cd services/training-service  && go test ./internal/service/... -v
-cd services/notification-service && go test ./internal/service/... -v
+cd services/ai-service           && go test ./internal/... -cover
+cd services/analytics-service    && go test ./internal/... -cover
+cd services/training-service     && go test ./internal/... -cover
+cd services/notification-service && go test ./internal/... -cover
+cd services/auth-service         && go test ./internal/... -cover
+cd services/user-service         && go test ./internal/... -cover
 ```
-
-Тесты для **auth-service** и **user-service** собираются и проходят внутри Docker при `make test-integration` (у них нет `go.sum` для локальной сборки вне Docker).
 
 Что покрывают юнит-тесты:
 
@@ -107,10 +125,10 @@ cd services/notification-service && go test ./internal/service/... -v
 |--------|----------------|
 | **ai-service** | Успех/ошибки генерации, лимит 5 отчётов, содержимое промптов, недоступность Ollama |
 | **analytics-service** | Агрегация статистики, группировка по неделям/месяцам, сортировка, ошибки клиента |
-| **training-service** | `ComputeIsOverdue` (5 кейсов), доступ к заданиям (403/404), архивация, отправка отчётов, владение шаблонами |
+| **training-service** | `ComputeIsOverdue` (5 кейсов), доступ к заданиям (403/404), архивация, отправка отчётов, владение шаблонами; `CreatePlan` — назначение каждому из нескольких спортсменов, разворачивание группы в участников, сохранение как шаблон |
 | **notification-service** | Валидация FCM-токена, пагинация, пометка прочитанным, создание из события |
-| **auth-service** | Валидация логина (все форматы), регистрация, дубликаты, refresh/logout |
-| **user-service** | Поиск (минимум 2 символа), профили, связи (ролевые ограничения), группы |
+| **auth-service** | Валидация логина (все форматы), регистрация, дубликаты, refresh/logout; handler-тесты через HTTP (400 при битом JSON/невалидной роли, 401 при неверных кредах, ротация refresh-токена) |
+| **user-service** | Поиск (минимум 2 символа), профили, связи (ролевые ограничения), группы; handler-тесты через HTTP (401 без заголовков аутентификации, 400/403 валидация и роли) |
 
 ### Интеграционные тесты (`make test-integration`)
 
@@ -143,6 +161,45 @@ docker compose -f deployments/docker-compose.yml exec ollama ollama list
 
 **Ускорение на Apple Silicon (M1/M2/M3):** для использования GPU (Metal) установите Ollama нативно (`brew install ollama && ollama serve`) и укажите в docker-compose для ai-service переменную `OLLAMA_URL: http://host.docker.internal:11434`.
 
+
+## Наблюдаемость (метрики)
+
+Каждый сервис экспортирует метрики Prometheus на эндпоинте `/metrics` через общий
+middleware `pkg/httpmetrics`. Собираются метрики модели **RED** (Rate, Errors,
+Duration):
+
+- `http_requests_total{service,method,route,status}` — счётчик запросов;
+- `http_request_duration_seconds{service,method,route}` — гистограмма задержек.
+
+Метка `route` — это **шаблон маршрута** (например `/api/v1/training/assignments/:assignmentId`),
+а не сырой URL, чтобы не было взрыва кардинальности от идентификаторов.
+
+Prometheus (`:9090`) скрейпит все 7 сервисов каждые 10 c. Grafana (`:3001`)
+поднимается с **автоматически провижининговым** дашбордом «CoachLink Platform»
+(анонимный вход, без формы логина) — открывается в один клик.
+
+```bash
+make up            # поднимает в т.ч. prometheus + grafana
+make traffic       # сгенерировать нагрузку (по умолчанию 200 итераций)
+make grafana       # открыть дашборд: http://localhost:3001
+make prometheus    # проверить, что все targets зелёные: http://localhost:9090/targets
+```
+
+Дашборд показывает: частоту запросов (RPS) по сервисам, частоту ошибок 5xx,
+p95-задержку по маршрутам, трафик Notification Service и суммарный объём
+запросов за час.
+
+## Демонстрация (живой результат)
+
+```bash
+make up
+make demo          # полный цикл + реальная AI-рекомендация (вывод Ollama)
+```
+
+`make demo` (`scripts/demo.sh`) проходит весь сценарий тренер→спортсмен→план→
+отчёты, затем запрашивает у AI-сервиса рекомендацию и печатает **реальный
+сгенерированный текст** локальной LLM (`gemma3:4b`) — это и есть видимый
+результат работы платформы.
 
 ## Остановка
 

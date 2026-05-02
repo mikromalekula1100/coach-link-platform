@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 10s
+  scrape_timeout: 5s
+
+scrape_configs:
+  - job_name: api-gateway
+    static_configs:
+      - targets: ["api-gateway:8080"]
+
+  - job_name: auth-service
+    static_configs:
+      - targets: ["auth-service:8001"]
+
+  - job_name: user-service
+    static_configs:
+      - targets: ["user-service:8002"]
+
+  - job_name: training-service
+    static_configs:
+      - targets: ["training-service:8003"]
+
+  - job_name: notification-service
+    static_configs:
+      - targets: ["notification-service:8004"]
+
+  - job_name: analytics-service
+    static_configs:
+      - targets: ["analytics-service:8005"]
+
+  - job_name: ai-service
+    static_configs:
+      - targets: ["ai-service:8006"]

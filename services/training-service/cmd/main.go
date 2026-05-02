@@ -19,6 +19,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/coach-link/platform/pkg/httpmetrics"
 	"github.com/coach-link/platform/services/training-service/internal/client"
 	"github.com/coach-link/platform/services/training-service/internal/config"
 	"github.com/coach-link/platform/services/training-service/internal/handler"
@@ -83,6 +84,9 @@ func main() {
 			return nil
 		},
 	}))
+
+	e.Use(httpmetrics.New("training-service", nil).Middleware())
+	httpmetrics.RegisterMetricsEndpoint(e)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

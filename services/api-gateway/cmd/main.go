@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/coach-link/platform/pkg/httpmetrics"
 	"github.com/coach-link/platform/services/api-gateway/internal/config"
 	"github.com/coach-link/platform/services/api-gateway/internal/middleware"
 	"github.com/coach-link/platform/services/api-gateway/internal/proxy"
@@ -44,6 +45,9 @@ func main() {
 	e.Use(emw.RequestID())
 	e.Use(middleware.CORSConfig())
 	e.Use(requestLogger())
+	// Record metrics before auth so rejected (401) requests are counted too.
+	e.Use(httpmetrics.New("api-gateway", nil).Middleware())
+	httpmetrics.RegisterMetricsEndpoint(e)
 	e.Use(middleware.JWTAuth(cfg.JWTSecret))
 
 	// Build reverse proxy router and register routes.

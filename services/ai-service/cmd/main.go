@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/coach-link/platform/pkg/httpmetrics"
 	"github.com/coach-link/platform/services/ai-service/internal/client"
 	"github.com/coach-link/platform/services/ai-service/internal/config"
 	"github.com/coach-link/platform/services/ai-service/internal/handler"
@@ -54,6 +55,9 @@ func main() {
 			return nil
 		},
 	}))
+	// Ollama inference can take 60-180s, so use wide latency buckets.
+	e.Use(httpmetrics.New("ai-service", []float64{0.5, 1, 2.5, 5, 10, 30, 60, 90, 120, 180, 300}).Middleware())
+	httpmetrics.RegisterMetricsEndpoint(e)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

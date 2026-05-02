@@ -4,6 +4,9 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /src
 
+# Copy shared package first (needed for replace directive)
+COPY pkg/httpmetrics/ /src/pkg/httpmetrics/
+
 # Copy service source
 COPY services/ai-service/ /src/services/ai-service/
 

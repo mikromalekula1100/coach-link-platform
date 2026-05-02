@@ -44,8 +44,8 @@ func isPublicRoute(method, path string) bool {
 func JWTAuth(secret string) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			// Allow health check through without auth.
-			if c.Request().URL.Path == "/health" {
+			// Allow health check and metrics scraping through without auth.
+			if c.Request().URL.Path == "/health" || c.Request().URL.Path == "/metrics" {
 				return next(c)
 			}
 

@@ -10,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/coach-link/platform/services/user-service/internal/model"
-	"github.com/coach-link/platform/services/user-service/internal/repository"
 	"github.com/coach-link/platform/services/user-service/internal/service"
 )
 

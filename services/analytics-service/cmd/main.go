@@ -14,6 +14,7 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/coach-link/platform/pkg/httpmetrics"
 	"github.com/coach-link/platform/services/analytics-service/internal/client"
 	"github.com/coach-link/platform/services/analytics-service/internal/config"
 	"github.com/coach-link/platform/services/analytics-service/internal/handler"
@@ -53,6 +54,8 @@ func main() {
 			return nil
 		},
 	}))
+	e.Use(httpmetrics.New("analytics-service", nil).Middleware())
+	httpmetrics.RegisterMetricsEndpoint(e)
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {

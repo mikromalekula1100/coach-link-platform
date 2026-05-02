@@ -4,8 +4,9 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /src
 
-# Copy the shared events package (for the replace directive)
+# Copy the shared packages (for the replace directives)
 COPY pkg/events /src/pkg/events
+COPY pkg/httpmetrics /src/pkg/httpmetrics
 
 # Copy service source
 COPY services/user-service/ /src/services/user-service/

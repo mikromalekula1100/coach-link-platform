@@ -20,6 +20,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/coach-link/platform/pkg/events"
+	"github.com/coach-link/platform/pkg/httpmetrics"
 	"github.com/coach-link/platform/services/auth-service/internal/config"
 	"github.com/coach-link/platform/services/auth-service/internal/handler"
 	"github.com/coach-link/platform/services/auth-service/internal/repository"
@@ -69,6 +70,8 @@ func main() {
 	e.Use(middleware.Recover())
 	e.Use(middleware.RequestID())
 	e.Use(requestLogger())
+	e.Use(httpmetrics.New("auth-service", nil).Middleware())
+	httpmetrics.RegisterMetricsEndpoint(e)
 
 	e.GET("/health", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
